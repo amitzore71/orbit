@@ -1,30 +1,30 @@
 # Orbit
 
-A local, native Windows focus timer written in Rust and Slint. One process, three optional desktop widgets, no account, network calls, browser runtime, telemetry, or background service.
+An offline Windows focus timer built with Rust and Slint. Includes tasks, focus reports, and three desktop widgets. No account, telemetry, or background service.
 
 ## Run
 
-Windows 11 22H2 (build 22621) or newer, x64. Open `orbit.exe` from the portable ZIP, or run the per-user installer. Closing the main window hides it in the tray. Right-click the coral ring in the tray to open, control, or quit Orbit and recover click-through widgets.
+Requires Windows 11 22H2 or newer, x64. Open `orbit.exe` from a portable package or use the per-user installer. Closing the window hides Orbit in the tray; right-click the tray icon to control or quit it.
 
-The portable build uses `%LOCALAPPDATA%\Orbit\orbit.db`. It needs no Visual C++ redistributable. To keep data elsewhere, run `orbit.exe --data-dir "D:\FocusData"`. Only one ordinary instance runs per user session. Existing pre-Orbit databases in `%LOCALAPPDATA%\StillPomodoro\still.db` are reused in place; an existing `still.db` in a custom data directory is also preserved.
+Data is stored in `%LOCALAPPDATA%\Orbit\orbit.db`. Use `orbit.exe --data-dir "D:\FocusData"` for another location. Existing pre-Orbit databases in `%LOCALAPPDATA%\StillPomodoro\still.db`, or `still.db` in a custom directory, are reused in place. Uninstalling retains your data. Back up the data directory while Orbit is closed.
 
-For notification activation in portable mode, open **Settings → Set up notifications**. This explicitly creates a Start menu shortcut and a local `orbit-pomodoro:` protocol registration pointing at the current executable. Repeat after moving the executable. The installer performs this setup automatically. If Windows notifications are unavailable, Orbit uses a tray alert; the selected alarm remains independent of notification settings.
+For portable notifications, open **Settings → Notifications** to register the current executable. Repeat after moving it. The installer handles registration automatically. If Windows notifications are unavailable, Orbit uses a tray alert.
 
 ## Use
 
-- **Timer:** Focus, short break, long break; start/pause, skip, and reset. Defaults are 25/5/15 minutes, with a long break after every four completed focus sessions. Sleep and hibernation do not consume the timer. Automatic starts are off by default.
-- **Tasks:** Add or edit a title and a 1–99 pomodoro estimate. Select the task for the next session. An ongoing session retains its original task. Completion counts only increase when a focus timer finishes; skips and resets retain partial focus time without completion credit. Deleting a task preserves its historical focus data.
-- **Reports:** Daily, Monday-based weekly, and calendar-month views, with previous/next controls. Focus time includes partial sessions and excludes pauses and sleep. Reports split intervals across local midnight and use your current Windows time zone. They refresh on session changes and when opened, rather than querying SQLite every second.
-- **Widgets:** Timer ring, today's tasks/progress, and a mini timer. All share the same timer. Drag a widget's header to move it; choose Bottom, Normal, or Always on top, enable click-through, or reset its position. Mini defaults to always on top. These are ordinary windows; they are not attached behind desktop icons.
-- **Settings:** Durations, long-break interval, automatic starts, three soft alarms, volume, notifications, reduced motion, optional Mica, shortcuts, and opt-in startup in the tray. Duration changes take effect when a new session starts.
+- **Timer:** Focus, short break, and long break. Defaults are 25/5/15 minutes, with a long break every four completed focus sessions. Sleep and hibernation do not consume time. Automatic starts are off by default.
+- **Tasks:** Add a title and a 1–99 session estimate. Selecting a task affects the next session; an ongoing session keeps its original task. Only finished focus sessions increase completion counts. Skips and resets retain partial focus time. Deleting a task preserves its history.
+- **Reports:** Daily, Monday-based weekly, and calendar-month totals. Includes partial focus time, excludes pauses and sleep, and uses the current Windows time zone.
+- **Widgets:** Timer ring, today's tasks, and mini timer. Drag a header to move a widget. Configure layering and click-through in Widgets; use **Unlock all widgets** in the tray to recover click-through windows.
+- **Settings:** Session lengths, automatic starts, alarms, volume, notifications, appearance, shortcuts, and opt-in startup. Duration changes apply to the next session.
 
-Default shortcuts are `Ctrl+Alt+P` (start/pause), `Ctrl+Alt+O` (open), and `Ctrl+Alt+N` (skip). Each can be changed or disabled. Conflicts with other applications are reported.
+Default shortcuts: `Ctrl+Alt+P` start/pause, `Ctrl+Alt+O` open, `Ctrl+Alt+N` skip. Change or disable them in Settings.
 
-State is saved on transitions, not on each display tick. A normal exit saves the current session paused. After a crash, Orbit restores the last checkpoint paused and explains that recovery is approximate: running time not committed before interruption is not credited. If a database write fails, activity pauses and accepted changes remain in a bounded retry queue. Retry a timer control to retry saving, then resume after saving recovers. Back up the data directory while Orbit is closed. Uninstalling retains your focus history.
+State is saved on transitions. Normal exit saves the session paused; crash recovery restores the last checkpoint paused without crediting unsaved time. A database write failure pauses activity and queues accepted changes for retry. Use a timer control to retry saving, then resume after recovery.
 
 ## Build and test
 
-Install the stable Rust MSVC toolchain and Visual Studio C++ Build Tools with the Windows SDK. Tested with Rust 1.98.1. `Cargo.lock` is included for repeatable dependency resolution. First build requires crates.io access; subsequent locked builds can use the local Cargo cache.
+Requires stable Rust MSVC and Visual Studio C++ Build Tools with the Windows SDK. Tested with Rust 1.98.1. Python 3.11+ is used by the packaging and audit scripts; resource monitoring also requires `psutil`.
 
 ```powershell
 git clone https://github.com/amitzore71/orbit.git
@@ -34,38 +34,29 @@ cargo build --release --locked
 .\target\release\orbit.exe
 ```
 
-The default release enables only Slint's Winit/software renderer and accessibility. `.cargo/config.toml` statically links the MSVC CRT. The release profile uses size optimization, LTO, one codegen unit, stripped symbols, and abort-on-panic. Build-time image/compiler dependencies do not imply matching runtime features.
-
-An optional GPU comparison build is available with `cargo build --release --features gpu`. It selects FemtoVG/OpenGL; it is not the default and must be measured separately. `cargo build --profile release-speed` compares speed optimization against the size profile.
+The default build uses Slint's software renderer and accessibility support. The MSVC CRT is linked statically; no Visual C++ redistributable is required. The release profile optimizes for size with LTO. Optional comparisons: `--features gpu` for FemtoVG/OpenGL, or `--profile release-speed` for speed optimization.
 
 ## Package
-
-Install Inno Setup 6.7.3 or newer for the installer, then run:
 
 ```powershell
 .\scripts\Build-Release.ps1 -InnoCompiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
-Use `-SkipInstaller` for just the portable ZIP. Outputs are in `dist`. Python 3 assembles exact dependency notices from the local registry and the committed upstream-license cache. No license downloads are needed during ordinary packaging. Inno Setup is a build tool, not a runtime dependency; its own licensing applies to its use.
+Requires Inno Setup 6.7.3 or newer. Use `-SkipInstaller` for a portable ZIP only. Outputs go to `dist`. Dependency notices are assembled from the Cargo registry and committed upstream license texts.
 
-## Performance and verification
+## Verification
 
-See [the performance report](docs/PERFORMANCE.md) and [validation notes](docs/VALIDATION.md). See [the memory and stability audit](docs/STABILITY.md) for leak checks, fault injection, native resource stress, and report-query benchmarks.
-
-The latest [task-selection and display-scheduling optimization](docs/UI-OPTIMIZATION.md) documents model reuse, reduced display wakeups, and measured before/after results.
-
-To repeat the six footprint scenarios:
-
-```powershell
-.\scripts\Measure-Footprint.ps1 -WarmupSeconds 10 -SampleSeconds 60
-```
-
-The measurement script creates isolated data under `artifacts`, opens temporary app windows where needed, and lets each process exit normally. Diagnostic flags are `--isolated`, `--tray`, `--all-widgets`, `--running`, `--minimized`, and `--quit-after <seconds>`; use them with a separate `--data-dir` for experiments. No working-set trimming or external-runtime exclusion is used to improve the reported numbers.
+[Validation](docs/VALIDATION.md) lists automated checks and manual desktop scenarios. [Performance](docs/PERFORMANCE.md) records footprint and task-selection benchmarks; [stability](docs/STABILITY.md) records fault injection and native resource stress. Results identify the binaries measured and are not guarantees for later builds.
 
 ## Source layout
 
-`focus-core` is a deterministic timer with an injected awake/wall clock. `storage` owns SQLite on one blocking worker with a bounded queue and a 1 MiB page cache. `platform-win` wraps inbox Windows APIs. `app` owns the shared state and lazily creates Slint widget windows. When all timer surfaces are hidden, only the completion deadline is scheduled; visible running timers update once per second.
+- `crates/focus-core`: deterministic timer with an injected clock.
+- `crates/storage`: SQLite worker, bounded persistence queue, reports.
+- `crates/platform-win`: Windows tray, shortcuts, audio, notifications, and window integration.
+- `crates/app`: shared state, Slint interface, and widgets.
 
 ## Licenses
 
-Application code is MIT licensed. Slint currently uses its **Royalty-free Desktop, Mobile, and Web Applications License 2.0**, which requires either its AboutSlint widget in the application or its attribution badge on a public webpage. The large in-app panel has been removed from the working source at the user's request. **Before distributing a new build, confirm the public attribution page or an alternative Slint license that permits this change.** Existing ZIP/installer artifacts have not been replaced by this source edit. The packaged `THIRD-PARTY-NOTICES.txt` retains dependency license texts and copyright notices. See the [Slint license](https://slint.dev/agreements/slint-royalty-free-license.pdf).
+Application code is [MIT licensed](LICENSE). Packaged dependency license texts are in `THIRD-PARTY-NOTICES.txt`.
+
+**Slint attribution is unresolved for distribution.** The current interface omits AboutSlint. Before distributing a build under Slint's Royalty-free License 2.0, provide the required public attribution badge or an alternative license. See the [Slint license](https://slint.dev/agreements/slint-royalty-free-license.pdf).

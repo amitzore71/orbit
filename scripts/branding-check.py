@@ -33,7 +33,7 @@ with contextlib.closing(sqlite3.connect(data / "still.db")) as db:
     checkpoint = json.loads(db.execute("SELECT value FROM meta WHERE key='timer'").fetchone()[0])
     assert checkpoint["running"] is False
 report = dict(application="Orbit", executableSha256=hashlib.sha256(exe.read_bytes()).hexdigest().upper(),
-              ordinaryTestsPassed=28, clippyPassed=True, canonicalDatabaseCreated=True,
+              canonicalDatabaseCreated=True,
               legacyDatabaseReused=True, unicodeTaskPreserved=True, allWindowsSmokePassed=True,
               sqliteIntegrity="ok")
 (root / "docs/branding-validation.json").write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")

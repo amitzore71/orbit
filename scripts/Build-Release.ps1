@@ -15,7 +15,7 @@ try {
     Copy-Item -LiteralPath 'README.md','LICENSE' -Destination $stagingRoot
     $stagingDocs = Join-Path $stagingRoot 'docs'
     New-Item -ItemType Directory -Path $stagingDocs -Force | Out-Null
-    Copy-Item -LiteralPath 'docs\PERFORMANCE.md','docs\RELEASE-NOTES.md','docs\VALIDATION.md','docs\STABILITY.md','docs\stability-results.json' -Destination $stagingDocs
+    Copy-Item -LiteralPath 'docs\PERFORMANCE.md','docs\RELEASE-NOTES.md','docs\VALIDATION.md','docs\STABILITY.md','docs\stability-results.json','docs\ui-optimization.json' -Destination $stagingDocs
     Copy-Item -LiteralPath 'docs\build-info.json' -Destination $stagingDocs
     if (Test-Path -LiteralPath 'docs\branding-validation.json') { Copy-Item -LiteralPath 'docs\branding-validation.json' -Destination $stagingDocs }
     if (Test-Path -LiteralPath 'docs\footprint.json') { Copy-Item -LiteralPath 'docs\footprint.json' -Destination $stagingDocs }

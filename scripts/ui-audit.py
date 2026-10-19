@@ -19,7 +19,7 @@ parser.add_argument("--exe", type=Path, default=root / "target/debug/orbit.exe")
 parser.add_argument("--scales", nargs="+", type=float, default=[1, 1.25, 1.5, 2])
 args = parser.parse_args()
 output = root / "artifacts" / f"ui-audit-{time.time_ns()}"
-output.mkdir()
+output.mkdir(parents=True)
 results = []
 
 for scale in args.scales:

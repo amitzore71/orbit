@@ -22,7 +22,7 @@ The audit found and fixed boundedness, native lifetime, and unnecessary-work pro
 - The report-query benchmark used **1,000,000 old intervals plus 10,000 matching intervals**, the same 1 MiB SQLite cache, and eight measured repetitions after warm-up. Median query/row-consumption time fell from **154.7 ms to 16.8 ms (9.2×)**. This is a Python/SQLite comparison of the old/new queries, not an end-to-end Rust UI latency claim. The Rust test separately asserts the seek/join query plan.
 - A real 60-second background session produced exactly one completion and **60,000 ms** of focus credit. An injected checkpoint-write failure paused the running process, retained and recovered **39 ms** of actual activity, and exited cleanly. A separate real process termination restored paused without crediting unsaved time; SQLite `integrity_check` returned `ok`.
 
-Machine-readable measurements are in `stability-results.json`; raw process samples, verifier XML/binary logs, and integration results remain under the source workspace's `artifacts` directory. Normal release footprint and distribution sizes are in `PERFORMANCE.md` and `footprint.json`. The diagnostics driver is excluded from distributed executables.
+Machine-readable measurements are in `stability-results.json`; new process samples, verifier logs, and integration results are written to the ignored `artifacts` directory. Normal release footprint and distribution sizes are in `PERFORMANCE.md` and `footprint.json`. The diagnostics driver is excluded from distributed executables.
 
 ## Reproduce
 

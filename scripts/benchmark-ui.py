@@ -17,7 +17,7 @@ parser.add_argument("--output", type=Path, default=root / "artifacts/ui-optimiza
 args = parser.parse_args()
 run_root = root / "artifacts" / f"ui-performance-{time.time_ns()}"
 run_root.mkdir(parents=True)
-results = dict(buildProfile="debug", tasks=5000, selectionsPerSample=100,
+results = dict(tasks=5000, selectionsPerSample=100,
                measuredScope="Task-model updates only; repaint and persistence are outside timed samples")
 
 for name, executable in [("before", args.before), ("after", args.after)]:
@@ -43,13 +43,10 @@ for name, executable in [("before", args.before), ("after", args.after)]:
 
 assert results["before"]["modelReplacements"] == 700
 assert results["after"]["modelReplacements"] == 0
-for scenario in ["tasks-widget-only"]:
-    assert results["before"]["wakeups"][scenario] > 0
-    assert results["after"]["wakeups"][scenario] == 0
+assert results["before"]["wakeups"]["tasks-widget-only"] > 0
+assert results["after"]["wakeups"]["tasks-widget-only"] == 0
 for scenario in ["timer-page", "mini-visible"]:
     assert results["after"]["wakeups"][scenario] > 0
-results["taskModelSpeedup"] = (results["before"]["medianMsPer100Selections"] /
-                               results["after"]["medianMsPer100Selections"])
 args.output.parent.mkdir(parents=True, exist_ok=True)
 args.output.write_text(json.dumps(results, indent=2), encoding="utf-8")
 print(f"Results: {args.output}", flush=True)

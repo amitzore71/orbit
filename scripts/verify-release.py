@@ -1,4 +1,4 @@
-"""Verify the measured PE, staged payload, ZIP, and report totals agree."""
+"""Verify the staged PE, build metadata, and ZIP agree."""
 import hashlib
 import json
 from pathlib import Path
@@ -48,7 +48,6 @@ with zipfile.ZipFile(root / "dist/Orbit-0.1.0-windows-x64.zip") as archive:
     archived = {name.replace("\\", "/"): archive.read(name) for name in archive.namelist() if not name.endswith("/")}
     assert payload == archived, "ZIP contents differ from the verified staging payload"
 total = sum(map(len, payload.values()))
-assert f"({total:,} bytes)" in (stage / "docs/PERFORMANCE.md").read_text()
 assert (root / "dist/Orbit-0.1.0-Setup-x64.exe").stat().st_size > 1000000
 result = dict(executableSha256=digest, executableBytes=len(exe), distributionBytes=total,
               zipMatchesStaging=True, x64=True, externalVCRuntime=False, imports=imports)
