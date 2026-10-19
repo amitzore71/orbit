@@ -1,3 +1,8 @@
 [target.x86_64-pc-windows-msvc]
 # The portable executable must not require the Visual C++ redistributable.
 rustflags = ["-C", "target-feature=+crt-static"]
+
+[env]
+# Orbit uses ordinary tables and stores JSON through serde, not SQLite JSON functions.
+# Keep transactions, WAL, triggers, foreign keys, thread safety, and integrity checks.
+LIBSQLITE3_FLAGS = { value = "-USQLITE_ENABLE_FTS3 -USQLITE_ENABLE_FTS3_PARENTHESIS -USQLITE_ENABLE_FTS5 -USQLITE_ENABLE_RTREE -USQLITE_ENABLE_DBSTAT_VTAB -USQLITE_SOUNDEX -USQLITE_ENABLE_LOAD_EXTENSION -DSQLITE_OMIT_JSON -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_SHARED_CACHE", force = true }
