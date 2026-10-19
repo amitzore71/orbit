@@ -41,14 +41,14 @@ The rendered audit does not cover these shell and hardware scenarios.
 
 ## Distribution checks
 
-The release script requires UPX 5.2.1. It compresses the staged copy, enforces a 10,000,000-byte EXE limit, verifies its checksum, and checks restored runtime sections against the uncompressed build. Both binaries must retain Windows relocations and ASLR/NX flags. Native dependency checks inspect the uncompressed PE, and ZIP contents must match staging.
+The release script defaults to an uncompressed executable and enforces a 12,000,000-byte EXE limit. Staging must match the built executable, retain Windows relocations and ASLR/NX flags, and have no external Visual C++ runtime dependency. ZIP contents must match staging. Optional `-CompressExecutable` requires UPX 5.2.1 and also verifies checksum and restored runtime sections.
 
 Validate the actual packaged executable with:
 
 ```powershell
-python scripts/integration-check.py dist/Orbit-0.1.0-windows-x64/orbit.exe
-python scripts/integration-failure-check.py dist/Orbit-0.1.0-windows-x64/orbit.exe
-python scripts/branding-check.py dist/Orbit-0.1.0-windows-x64/orbit.exe
+python scripts/integration-check.py dist/Orbit-0.1.1-windows-x64/orbit.exe
+python scripts/integration-failure-check.py dist/Orbit-0.1.1-windows-x64/orbit.exe
+python scripts/branding-check.py dist/Orbit-0.1.1-windows-x64/orbit.exe
 ```
 
 Verify that the ZIP and installer contain the same executable and dependency notices, PE imports have no Visual C++ runtime DLL dependency, uninstall retains user data, and the About page displays the AboutSlint widget. Build metadata identifies the last packaged executable, not necessarily the current source. Sign only with a valid signing certificate.

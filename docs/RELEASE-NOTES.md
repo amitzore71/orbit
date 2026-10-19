@@ -1,3 +1,21 @@
+# Orbit 0.1.1 — 20 October 2026
+
+Orbit 0.1.1 prioritizes fast startup, low runtime memory, and reliable persistence.
+
+- Ship an uncompressed executable by default; ZIP and installer downloads remain compressed.
+- Preserve pending task edits when completion is toggled, and coalesce task snapshots to prevent reply backlogs.
+- Apply settings only after storage confirms the write.
+- Save the final paused session asynchronously through reserved queue capacity before exit.
+- Recover correctly after canceled Windows shutdown and sleep/resume during storage errors.
+- Bound historical report reads while preserving unusually long legacy intervals.
+
+Requires Windows 11 22H2 or newer, x64. Use the installer or extract the portable ZIP and run orbit.exe. The executable is unsigned.
+
+Existing databases migrate to schema 3. Back up the data directory while Orbit is closed before upgrading; Orbit 0.1.0 cannot open a migrated database. Uninstall retains user data.
+
+SHA256SUMS.txt contains hashes for the installer and portable ZIP. Validation results and measured executable identities are included in the packaged documentation.
+
+
 # Orbit 0.1.0
 
 Initial Windows 11 x64 release: three timer modes; tasks and estimates; SQLite settings and history; daily, weekly, and monthly reports; tray controls; configurable global shortcuts; soft alarms and volume; Windows notifications; opt-in autostart; three independently enabled widgets with saved placement, layering, and click-through recovery.

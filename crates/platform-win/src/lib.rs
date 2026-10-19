@@ -352,6 +352,10 @@ unsafe extern "system" fn window_proc(
                 emit(Event::Quit);
                 LRESULT(0)
             }
+            WM_ENDSESSION => {
+                emit(Event::Resume);
+                LRESULT(0)
+            }
             WM_COMMANDS => {
                 // Drain commands without holding a RefCell borrow across Win32 message dispatch.
                 loop {
@@ -1195,6 +1199,35 @@ fn set_registry_string(path: &str, name: Option<&str>, value: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn canceled_shutdown_resumes_the_timer() {
+        let (sender, receiver) = mpsc::channel();
+        let (_commands, commands) = mpsc::sync_channel(1);
+        NATIVE.with_borrow_mut(|slot| {
+            *slot = Some(NativeState {
+                callback: Arc::new(move |event| sender.send(event).unwrap()),
+                receiver: commands,
+                icon: HICON::default(),
+                taskbar_created: u32::MAX,
+                hotkeys: Default::default(),
+            })
+        });
+        unsafe {
+            window_proc(HWND::default(), WM_QUERYENDSESSION, WPARAM(0), LPARAM(0));
+            window_proc(HWND::default(), WM_ENDSESSION, WPARAM(0), LPARAM(0));
+        }
+        NATIVE.with_borrow_mut(|slot| *slot = None);
+        let events: Vec<_> = receiver.try_iter().collect();
+        assert!(matches!(events.as_slice(), [Event::Suspend, Event::Resume]));
+        let mut timer = focus_core::Timer::new(Settings::default());
+        let now = WindowsClock.now();
+        timer.dispatch(focus_core::Command::Start, now);
+        timer.dispatch(focus_core::Command::Suspend, now);
+        timer.dispatch(focus_core::Command::Resume, now);
+        timer.dispatch(focus_core::Command::Pause, now);
+        timer.dispatch(focus_core::Command::Start, now);
+        assert!(timer.snapshot(now).running);
+    }
     #[test]
     fn orbit_reuses_existing_databases_without_moving_or_overwriting_them() {
         let base = std::env::temp_dir().join(format!(

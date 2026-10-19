@@ -402,14 +402,14 @@ export component MainWindow inherits Window {
                         Action { text: "Data folder"; description: "Open data folder"; glyph: Glyph.folder; height: 36px; clicked => { root.open-data-folder(); } }
                         Action { text: "Quit Orbit"; glyph: Glyph.power; height: 36px; clicked => { root.control("quit"); } }
                     }
-                    Caption { text: "Orbit 0.1.0 · Your data stays on this computer."; wrap: word-wrap; }
+                    Caption { text: "Orbit 0.1.1 · Your data stays on this computer."; wrap: word-wrap; }
                 }
             }
             if root.page == 5: VerticalLayout {
                 padding: 38px; spacing: 20px; alignment: start;
                 Heading { text: "Orbit"; }
                 Text { text: "Offline focus timer for Windows"; font-size: 22px; color: Tokens.ink; }
-                Caption { text: "Version 0.1.0"; }
+                Caption { text: "Version 0.1.1"; }
                 Rule {}
                 Caption { text: "Application source is licensed under MIT. Third-party licenses are included with the download."; wrap: word-wrap; }
                 Rectangle {

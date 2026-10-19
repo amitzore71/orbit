@@ -22,3 +22,6 @@ png = { version = "0.18", optional = true }
 [build-dependencies]
 slint-build = "~1.18.1"
 winresource = "0.1"
+
+[dev-dependencies]
+rusqlite = { version = "0.38", default-features = false, features = ["bundled"] }

@@ -1,11 +1,11 @@
 {
   "application": "Orbit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "executable": "orbit.exe",
-  "executableBytes": 4453888,
-  "executableSha256": "562125C3202099C37FA7BA15213540FE718DD454A600A1CC6EFA8D16EFAE1148",
-  "compression": "upx",
-  "sourceExecutableBytes": 10757120,
-  "sourceExecutableSha256": "363DB4AAAE97FD728BCBB98C07E3DD17D039403805267C3C2D08266BE30B5D97",
+  "executableBytes": 10753024,
+  "executableSha256": "0782BFC1D5AE948E7BA77693D5982B11049C7777839F9599558B8709D8917682",
+  "compression": "none",
+  "sourceExecutableBytes": 10753024,
+  "sourceExecutableSha256": "0782BFC1D5AE948E7BA77693D5982B11049C7777839F9599558B8709D8917682",
   "historicalAuditSha256": "4E0ACF809C90E7EA291F53514A20229D3F48065940AF9D7D920443E6C7271F26"
 }

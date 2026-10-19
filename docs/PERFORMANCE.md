@@ -1,5 +1,15 @@
 # Performance measurements
 
+## Orbit 0.1.1 release — 20 October 2026
+
+The default distribution now keeps its executable uncompressed. ZIP and installer downloads remain compressed. This avoids the decompression work and additional private commit observed in the 0.1.0 UPX package; executable compression is available only through `-CompressExecutable`.
+
+Each release build records the actual staged executable in `release-footprint.json` and `release-startup.json`. Verification requires both measurement hashes to match the packaged executable. Footprint scenarios use separate empty databases, two seconds of warm-up and eight seconds of sampling. Startup uses seven tray launches; the warm median excludes the first launch and measures native input-idle, not first paint. Short samples and warm-cache results are not battery, cold-cache, or universal latency guarantees.
+
+Task mutations now return fixed-size acknowledgements, and one outstanding task snapshot coalesces later refresh requests. This removes the full-list reply per mutation that retained about 193 MiB in the audit's delayed-consumer stress case (5,000 tasks and 128 edits). Recovery and exit use reserved queue capacity; persistence completion is asynchronous in the UI. Historical report queries bound the ordinary interval seek and preserve unusually long intervals through a sparse index.
+
+Current correctness checks and the distinction from historical heap/resource audits are recorded in RELEASE-VALIDATION.md. Measurements below retain their original build scope.
+
 ## Task analytics optimization — 19 October 2026
 
 Matched release-profile storage benchmarks use an in-memory SQLite database with 100,000 focus intervals, 50,000 completed sessions, and 500 multilingual task titles across 31 days. Each median uses ten samples after one warm-up. These timings measure report construction, excluding painting and disk I/O.

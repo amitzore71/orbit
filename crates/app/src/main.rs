@@ -6,8 +6,11 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
 slint::include_modules!();
+const TASK_REQUEST: u64 = 1u64 << 62;
 #[cfg(feature = "diagnostics")]
 mod diagnostics;
+#[cfg(test)]
+mod regression_tests;
 mod task_models;
 
 thread_local! {static APP:RefCell<Option<Rc<RefCell<App>>>>=const{RefCell::new(None)};}
@@ -68,6 +71,8 @@ struct App {
     today_generation: u64,
     report_in_flight: Option<u64>,
     today_in_flight: Option<u64>,
+    tasks_in_flight: bool,
+    tasks_dirty: bool,
     data_dir: PathBuf,
     quitting: bool,
     main_attached: bool,
@@ -154,6 +159,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         today_generation: 0,
         report_in_flight: None,
         today_in_flight: None,
+        tasks_in_flight: false,
+        tasks_dirty: false,
         data_dir,
         quitting: false,
         main_attached: false,
@@ -364,6 +371,22 @@ impl App {
         if self.quitting {
             return;
         }
+        if self.storage.is_blocked() && matches!(command, Command::Suspend | Command::Resume) {
+            let now = WindowsClock.now();
+            if self.timer.snapshot(now).running {
+                let effects = self.timer.dispatch(Command::Pause, now);
+                if let Err(error) = self
+                    .storage
+                    .preserve_pause(effects, self.timer.checkpoint(now))
+                {
+                    self.message(&error);
+                }
+            }
+            self.timer.dispatch(command, now);
+            self.render();
+            self.reschedule();
+            return;
+        }
         if self.storage.is_blocked() && !matches!(command, Command::Tick) {
             self.submit(Operation::Flush, 0);
             self.message("Saving was interrupted. Retrying saved changes; the timer stays paused. Try the control again after saving recovers.");
@@ -399,7 +422,7 @@ impl App {
                 return;
             }
             if tasks_changed {
-                self.submit(Operation::Tasks, 0);
+                self.request_tasks();
             }
             self.request_today();
             if self.main.get_page() == 2 {
@@ -542,6 +565,9 @@ impl App {
         }
     }
     fn submit(&self, operation: Operation, generation: u64) -> bool {
+        if self.quitting {
+            return false;
+        }
         let result = self.storage.submit(operation, move |result| {
             let _ = slint::invoke_from_event_loop(move || {
                 with_app(|a| a.storage_response(generation, result))
@@ -554,6 +580,16 @@ impl App {
         true
     }
     fn storage_response(&mut self, generation: u64, result: focus_storage::Result<Response>) {
+        if generation == TASK_REQUEST {
+            self.tasks_in_flight = false;
+            if self.tasks_dirty {
+                self.tasks_dirty = false;
+                self.request_tasks();
+                if result.is_ok() {
+                    return;
+                }
+            }
+        }
         if self.report_in_flight == Some(generation) {
             self.report_in_flight = None;
         }
@@ -587,6 +623,10 @@ impl App {
                 self.refresh_tasks();
                 self.render();
             }
+            Ok(Response::TasksChanged) => self.request_tasks(),
+            Ok(Response::SettingsSaved(settings)) => {
+                self.apply_saved_settings(settings);
+            }
             Ok(Response::Report(report)) => {
                 if generation == self.report_generation {
                     self.show_report(report);
@@ -609,8 +649,9 @@ impl App {
                 }
             }
             Ok(Response::Saved) => {}
-            Ok(Response::Flushed) => {
-                self.submit(Operation::Tasks, 0);
+            Ok(Response::Flushed(settings)) => {
+                self.apply_saved_settings(settings);
+                self.request_tasks();
                 self.request_today();
                 if self.main.get_page() == 2 {
                     self.request_report();
@@ -621,6 +662,7 @@ impl App {
         if self.report_in_flight.is_none()
             && generation != 0
             && generation & (1u64 << 63) == 0
+            && generation != TASK_REQUEST
             && generation != self.report_generation
         {
             self.send_report();
@@ -630,6 +672,21 @@ impl App {
             && generation != self.today_generation
         {
             self.send_today();
+        }
+        if self.tasks_dirty && !self.tasks_in_flight && !self.quitting {
+            self.request_tasks();
+        }
+    }
+    fn request_tasks(&mut self) {
+        if self.tasks_in_flight {
+            self.tasks_dirty = true;
+        } else {
+            self.tasks_dirty = false;
+            if self.submit(Operation::Tasks, TASK_REQUEST) {
+                self.tasks_in_flight = true;
+            } else {
+                self.tasks_dirty = true;
+            }
         }
     }
     fn refresh_tasks(&self) {
@@ -657,16 +714,10 @@ impl App {
         let operation = if id < 0 {
             Operation::AddTask { title, estimate }
         } else {
-            let done = self
-                .tasks
-                .iter()
-                .find(|t| t.id == i64::from(id))
-                .is_some_and(|t| t.done);
             Operation::EditTask {
                 id: i64::from(id),
                 title,
                 estimate,
-                done,
             }
         };
         if !self.submit(operation, 0) {
@@ -692,15 +743,7 @@ impl App {
                 self.main.set_task_estimate(task.estimate as i32);
             }
             "done" => {
-                self.submit(
-                    Operation::EditTask {
-                        id,
-                        title: task.title,
-                        estimate: task.estimate,
-                        done: !task.done,
-                    },
-                    0,
-                );
+                self.submit(Operation::ToggleTaskDone(id), 0);
             }
             "delete" => {
                 if self.timer.checkpoint(WindowsClock.now()).selected_task == Some(id) {
@@ -712,7 +755,7 @@ impl App {
         }
     }
     fn request_report(&mut self) {
-        self.report_generation = (self.report_generation + 1) & !(1u64 << 63);
+        self.report_generation = (self.report_generation + 1) & (TASK_REQUEST - 1);
         if self.report_in_flight.is_none() {
             self.send_report();
         }
@@ -732,7 +775,7 @@ impl App {
         if !matches!(self.widgets[1], Some(Widget::Tasks(_))) {
             return;
         }
-        self.today_generation = (self.today_generation + 1) | (1u64 << 63);
+        self.today_generation = ((self.today_generation + 1) & (TASK_REQUEST - 1)) | (1u64 << 63);
         if self.today_in_flight.is_none() {
             self.send_today();
         }
@@ -838,16 +881,23 @@ impl App {
             self.message(&e);
             return;
         }
-        if s.autostart != self.timer.settings.autostart
-            && let Err(e) = platform_win::set_autostart(s.autostart)
-        {
-            self.message(&format!("Could not change startup settings: {e}"));
-            return;
+        if self.submit(Operation::Settings(s), 0) {
+            self.message("Saving settings…");
         }
-        let warnings = self.platform.hotkeys(&s);
-        self.timer.settings = s.clone();
-        self.submit(Operation::Settings(s), 0);
-        self.command(Command::Checkpoint);
+    }
+    fn apply_saved_settings(&mut self, settings: Settings) {
+        let mut warnings = Vec::new();
+        if settings.autostart != self.timer.settings.autostart
+            && let Err(error) = platform_win::set_autostart(settings.autostart)
+        {
+            warnings.push(format!(
+                "Startup registration could not be changed: {error}"
+            ));
+        }
+        if settings != self.timer.settings {
+            warnings.extend(self.platform.hotkeys(&settings));
+            self.timer.settings = settings;
+        }
         self.apply_appearance();
         let message = if warnings.is_empty() {
             "Settings saved. New durations apply to the next session.".to_string()
@@ -1053,9 +1103,6 @@ impl App {
             Event::Quit => self.quit(),
             Event::Suspend => {
                 self.command(Command::Suspend);
-                if let Err(e) = self.storage.flush() {
-                    self.message(&e);
-                }
             }
             Event::Resume => self.command(Command::Resume),
             Event::DisplayChanged => {
@@ -1105,19 +1152,37 @@ impl App {
         if self.quitting {
             return;
         }
-        self.command(Command::Pause);
-        for i in 0..3 {
-            self.destroy_widget(i);
-            self.save_widget(i);
-        }
-        if let Err(e) = self.storage.flush() {
-            self.message(&format!("Could not save before exiting: {e}"));
-            self.show();
+        let now = WindowsClock.now();
+        let previous = self.timer.clone();
+        let effects = self.timer.dispatch(Command::Pause, now);
+        let result = self
+            .storage
+            .finish(effects, self.timer.checkpoint(now), |result| {
+                let _ =
+                    slint::invoke_from_event_loop(move || with_app(|app| app.finish_quit(result)));
+            });
+        if let Err(error) = result {
+            self.timer = previous;
+            self.message(&format!("Could not queue the final save: {error}"));
+            self.reschedule();
             return;
         }
         self.quitting = true;
         self.display_timer.stop();
         self.expiry_timer.stop();
+        self.render();
+        self.message("Saving before exiting…");
+    }
+    fn finish_quit(&mut self, result: focus_storage::Result<Response>) {
+        if let Err(e) = result {
+            self.quitting = false;
+            self.message(&format!("Could not save before exiting: {e}"));
+            self.show();
+            return;
+        }
+        for i in 0..3 {
+            self.destroy_widget(i);
+        }
         self.platform.stop();
         let _ = self.main.hide();
         let _ = slint::quit_event_loop();

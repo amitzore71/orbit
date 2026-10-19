@@ -7,13 +7,15 @@ import struct
 import subprocess
 import tempfile
 import zipfile
+import tomllib
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--skip-installer", action="store_true")
 parser.add_argument("--upx", type=Path)
 args = parser.parse_args()
-stage = root / "dist/Orbit-0.1.0-windows-x64"
+version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+stage = root / f"dist/Orbit-{version}-windows-x64"
 exe = (stage / "orbit.exe").read_bytes()
 source = (root / "target/release/orbit.exe").read_bytes()
 digest = hashlib.sha256(exe).hexdigest().upper()
@@ -24,9 +26,13 @@ assert digest == build["executableSha256"]
 assert build["application"] == "Orbit" and build["executable"] == "orbit.exe"
 assert footprint["executableSha256"] == stability["executableSha256"] == build["historicalAuditSha256"]
 assert len(exe) == build["executableBytes"]
-assert len(exe) <= 10_000_000, "Release executable exceeds 10 MB"
+assert build["version"] == version
+assert len(exe) <= 12_000_000, "Release executable exceeds 12 MB"
 assert len(source) == build["sourceExecutableBytes"]
 assert hashlib.sha256(source).hexdigest().upper() == build["sourceExecutableSha256"]
+for report in ("release-footprint.json", "release-startup.json"):
+    audit = json.loads((stage / "docs" / report).read_text(encoding="utf-8-sig"))
+    assert audit["executableSha256"] == digest, f"Stale release measurements: {report}"
 
 
 def read_pe(data):
@@ -85,11 +91,11 @@ while any(source[cursor:cursor+20]):
     cursor += 20
 assert not any(name.lower().startswith(("vcruntime", "msvcp", "api-ms-win-crt")) for name in imports), imports
 payload = {p.relative_to(stage).as_posix(): p.read_bytes() for p in stage.rglob("*") if p.is_file()}
-with zipfile.ZipFile(root / "dist/Orbit-0.1.0-windows-x64.zip") as archive:
+with zipfile.ZipFile(root / f"dist/Orbit-{version}-windows-x64.zip") as archive:
     archived = {name.replace("\\", "/"): archive.read(name) for name in archive.namelist() if not name.endswith("/")}
     assert payload == archived, "ZIP contents differ from the verified staging payload"
 if not args.skip_installer:
-    assert (root / "dist/Orbit-0.1.0-Setup-x64.exe").stat().st_size > 1000000
+    assert (root / f"dist/Orbit-{version}-Setup-x64.exe").stat().st_size > 1000000
 result = dict(executableSha256=digest, executableBytes=len(exe), sourceExecutableBytes=len(source),
               compression=build["compression"], distributionBytes=sum(map(len, payload.values())),
               zipMatchesStaging=True, x64=True, aslr=True, nx=True, externalVCRuntime=False, imports=imports)

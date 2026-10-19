@@ -1,8 +1,9 @@
 {
   "application": "Orbit",
-  "executableSha256": "562125C3202099C37FA7BA15213540FE718DD454A600A1CC6EFA8D16EFAE1148",
+  "executableSha256": "0782BFC1D5AE948E7BA77693D5982B11049C7777839F9599558B8709D8917682",
   "canonicalDatabaseCreated": true,
   "legacyDatabaseReused": true,
+  "schema2MigrationPreservedHistory": true,
   "unicodeTaskPreserved": true,
   "allWindowsSmokePassed": true,
   "sqliteIntegrity": "ok"

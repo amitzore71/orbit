@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import tomllib
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -11,7 +12,8 @@ parser.add_argument("--compression", choices=["none", "upx"], default="none")
 args = parser.parse_args()
 exe = args.exe.read_bytes()
 source = (root / "target/release/orbit.exe").read_bytes()
-info = dict(application="Orbit", version="0.1.0", executable="orbit.exe", executableBytes=len(exe),
+version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+info = dict(application="Orbit", version=version, executable="orbit.exe", executableBytes=len(exe),
             executableSha256=hashlib.sha256(exe).hexdigest().upper(),
             compression=args.compression, sourceExecutableBytes=len(source),
             sourceExecutableSha256=hashlib.sha256(source).hexdigest().upper(),
