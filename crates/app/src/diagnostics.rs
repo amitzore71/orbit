@@ -7,6 +7,24 @@ thread_local! { static DRIVER: slint::Timer = slint::Timer::default(); }
 /// Capture actual software-rendered windows at two layouts and in high contrast.
 /// Diagnostic-only code and PNG support are absent from ordinary release builds.
 pub fn audit(output: PathBuf) {
+    const SCENARIOS: [(&str, i32, bool, bool); 16] = [
+        ("timer", 0, false, false),
+        ("tasks", 1, false, false),
+        ("reports", 2, false, false),
+        ("widgets", 3, false, false),
+        ("settings", 4, false, false),
+        ("about", 5, false, false),
+        ("timer-compact", 0, true, false),
+        ("tasks-compact", 1, true, false),
+        ("reports-compact", 2, true, false),
+        ("widgets-compact", 3, true, false),
+        ("settings-compact", 4, true, false),
+        ("about-compact", 5, true, false),
+        ("timer-notice", 0, true, false),
+        ("timer-high-contrast", 0, true, true),
+        ("tasks-high-contrast", 1, true, true),
+        ("widgets-high-contrast", 3, true, true),
+    ];
     std::fs::create_dir_all(&output).unwrap();
     let step = Rc::new(Cell::new(0usize));
     let rows: Rc<RefCell<Vec<serde_json::Value>>> = Default::default();
@@ -16,20 +34,9 @@ pub fn audit(output: PathBuf) {
             Duration::from_millis(450),
             move || {
                 let index = step.get();
-                if index >= 18 {
+                if index >= SCENARIOS.len() * 2 {
                     DRIVER.with(slint::Timer::stop);
                     with_app(|app| {
-                        for widget in app.widgets.iter().flatten() {
-                            let name = match widget {
-                                Widget::Timer(_) => "timer-widget",
-                                Widget::Tasks(_) => "tasks-widget",
-                                Widget::Mini(_) => "mini-widget",
-                            };
-                            rows.borrow_mut().push(snapshot(
-                                widget.window(),
-                                &output.join(format!("{name}.png")),
-                            ));
-                        }
                         std::fs::write(
                             output.join("audit.json"),
                             serde_json::to_vec_pretty(&*rows.borrow()).unwrap(),
@@ -40,25 +47,28 @@ pub fn audit(output: PathBuf) {
                     return;
                 }
                 // Configure on one iteration, capture after the backend has laid out/painted.
-                if index % 2 == 0 {
+                if index.is_multiple_of(2) {
                     let scenario = index / 2;
                     with_app(|app| {
                         app.main.set_message("".into());
-                        let (width, height, page) = match scenario {
-                            0..=5 => (940., 740., scenario as i32),
-                            6 => (760., 540., 0),
-                            7 => (760., 540., 3),
-                            _ => (760., 540., 1),
-                        };
-                        app.main
-                            .window()
-                            .set_size(slint::LogicalSize::new(width, height));
+                        let (name, page, compact, high_contrast) = SCENARIOS[scenario];
+                        let (width, height) = if compact { (760., 540.) } else { (940., 740.) };
+                        // Match the overridden renderer scale, including when Windows'
+                        // monitor scale differs from SLINT_SCALE_FACTOR.
+                        let scale = app.main.window().scale_factor();
+                        app.main.window().set_size(slint::PhysicalSize::new(
+                            (width * scale) as u32,
+                            (height * scale) as u32,
+                        ));
                         app.main.set_page(page);
                         app.sync_layout();
                         if page == 2 {
                             app.request_report();
                         }
-                        if scenario == 8 {
+                        if name == "timer-notice" {
+                            app.main.set_message("An interrupted session was restored paused. Recovery is approximate; unsaved running time was not added to reports.".into());
+                        }
+                        if high_contrast {
                             let tokens = app.main.global::<Tokens>();
                             tokens.set_high_contrast(true);
                             tokens.set_system_background(slint::Color::from_rgb_u8(0, 0, 0));
@@ -70,21 +80,18 @@ pub fn audit(output: PathBuf) {
                 } else {
                     let scenario = index / 2;
                     with_app(|app| {
-                        let name = match scenario {
-                            0 => "timer",
-                            1 => "tasks",
-                            2 => "reports",
-                            3 => "widgets",
-                            4 => "settings",
-                            5 => "about",
-                            6 => "timer-compact",
-                            7 => "widgets-compact",
-                            _ => "tasks-high-contrast",
-                        };
+                        let name = SCENARIOS[scenario].0;
                         rows.borrow_mut().push(snapshot(
                             app.main.window(),
                             &output.join(format!("{name}.png")),
                         ));
+                        if scenario == 5 {
+                            for (i, widget) in app.widgets.iter().enumerate() {
+                                if let Some(widget) = widget {
+                                    rows.borrow_mut().push(snapshot(widget.window(), &output.join(format!("widget-{i}.png"))));
+                                }
+                            }
+                        }
                     });
                 }
                 step.set(index + 1);
