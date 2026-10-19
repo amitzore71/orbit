@@ -1,0 +1,173 @@
+{
+  "measuredAt": "2026-10-19",
+  "executableSha256": "4E0ACF809C90E7EA291F53514A20229D3F48065940AF9D7D920443E6C7271F26",
+  "standardTestsPassed": 27,
+  "explicitlyRunNativeTestsPassed": 2,
+  "randomizedTimerCommands": 800000,
+  "failedWriteAttempts": 20000,
+  "rejectedWritesWhileBlocked": 10000,
+  "playbackGateContentionAttempts": 100000,
+  "nativeShellCycles": 200,
+  "silentNativeAudioPlaybacks": 20,
+  "audioFailures": 0,
+  "lifecycle": {
+    "cycles": 500,
+    "phase": "complete",
+    "retainedWidgets": 0,
+    "trayDisplayTicks": 0,
+    "weakChecks": 1500
+  },
+  "tasksDuringLifecycle": 2000,
+  "lifecycleBatches": [
+    {
+      "firstCycle": 50,
+      "lastCycle": 149,
+      "samples": 39,
+      "privateBytesMin": 13619200,
+      "handlesMin": 247,
+      "gdiMin": 17,
+      "userMin": 21
+    },
+    {
+      "firstCycle": 150,
+      "lastCycle": 249,
+      "samples": 40,
+      "privateBytesMin": 13639680,
+      "handlesMin": 246,
+      "gdiMin": 17,
+      "userMin": 21
+    },
+    {
+      "firstCycle": 250,
+      "lastCycle": 349,
+      "samples": 39,
+      "privateBytesMin": 13828096,
+      "handlesMin": 242,
+      "gdiMin": 17,
+      "userMin": 21
+    },
+    {
+      "firstCycle": 350,
+      "lastCycle": 449,
+      "samples": 40,
+      "privateBytesMin": 13697024,
+      "handlesMin": 242,
+      "gdiMin": 17,
+      "userMin": 21
+    },
+    {
+      "firstCycle": 450,
+      "lastCycle": 549,
+      "samples": 20,
+      "privateBytesMin": 14036992,
+      "handlesMin": 242,
+      "gdiMin": 17,
+      "userMin": 21
+    }
+  ],
+  "trayAfterUse": {
+    "samples": 68,
+    "elapsedSeconds": 34.333305000007385,
+    "privateBytesMin": 14299136,
+    "privateBytesMax": 14397440,
+    "privateBytesMedian": 14368768.0,
+    "privateBytesFirst": 14397440,
+    "privateBytesLast": 14299136,
+    "handlesFirst": 242,
+    "handlesLast": 238,
+    "gdiFirst": 17,
+    "gdiLast": 17,
+    "userFirst": 20,
+    "userLast": 20,
+    "threadsFirst": 7,
+    "threadsLast": 4,
+    "cpuMs": 0.0,
+    "cpuCycles": 1815470,
+    "cpuPercentOneCore": 0.0
+  },
+  "verifier": {
+    "cycles": 150,
+    "weakChecks": 450,
+    "tasks": 300,
+    "retainedWidgets": 0,
+    "modules": [
+      "verifier.dll",
+      "vfbasics.dll",
+      "vrfcore.dll"
+    ],
+    "errorEntries": 0,
+    "exactReleaseBinaryAlsoChecked": true,
+    "positiveControlStop": "0x7: Heap block already freed"
+  },
+  "reportQueryBenchmark": {
+    "oldIntervals": 1000000,
+    "queriedIntervals": 10000,
+    "cacheKiB": 1024,
+    "before": {
+      "medianMs": 154.70245000324212,
+      "samplesMs": [
+        125.16630000027362,
+        126.90299999667332,
+        125.6293999904301,
+        112.09119998966344,
+        117.98349999298807,
+        192.31480000598822,
+        185.00769999809563,
+        182.50190000981092,
+        204.1495000012219
+      ],
+      "queryPlan": [
+        [
+          3,
+          0,
+          205,
+          "SEARCH intervals USING INDEX intervals_range (start_ms<?)"
+        ]
+      ]
+    },
+    "after": {
+      "medianMs": 16.766549997555558,
+      "samplesMs": [
+        17.48070000030566,
+        17.71980000194162,
+        17.783299990696833,
+        16.97270000295248,
+        16.5634000004502,
+        16.969699994660914,
+        14.5390999969095,
+        13.994899985846132,
+        14.355999999679625
+      ],
+      "queryPlan": [
+        [
+          4,
+          0,
+          204,
+          "SEARCH i USING INDEX intervals_end (end_ms>?)"
+        ],
+        [
+          12,
+          0,
+          45,
+          "SEARCH s USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN"
+        ]
+      ]
+    },
+    "speedup": 9.226850486581712
+  },
+  "databaseFailure": {
+    "sqliteFailurePausedTimer": true,
+    "recoveredCheckpoint": true,
+    "creditedMs": 39,
+    "realProcessTerminationPausedRestore": true,
+    "sqliteIntegrity": "ok",
+    "privateBytesDuringFailure": 3670016
+  },
+  "realExpiry": {
+    "backgroundExpiry": true,
+    "completedSessions": 1,
+    "creditedFocusMs": 60000,
+    "pausedRestart": true,
+    "realExpiryRunSeconds": 64.22
+  }
+}

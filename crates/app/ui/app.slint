@@ -1,0 +1,439 @@
+import { Palette, Button, LineEdit, SpinBox, CheckBox, ComboBox, Slider, ScrollView, ListView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Icon, Glyph } from "icons.slint";
+
+export struct TaskRow { id: int, title: string, estimate: int, completed: int, done: bool, selected: bool }
+export struct ReportDay { label: string, minutes: string, fraction: float }
+export struct WidgetRow { title: string, description: string, enabled: bool, layer: int, click-through: bool }
+
+export global Tokens {
+    in-out property <bool> reduced-motion: false;
+    in-out property <bool> high-contrast: false;
+    in-out property <color> system-background: #ffffff;
+    in-out property <color> system-foreground: #000000;
+    in-out property <color> system-highlight: #0000ff;
+    in-out property <color> system-highlight-text: #ffffff;
+    in-out property <color> system-muted: #777777;
+    out property <color> canvas: high-contrast ? system-background : #f5f2eb;
+    out property <color> paper: high-contrast ? system-background : #fffcf7;
+    out property <color> ink: high-contrast ? system-foreground : #292c29;
+    out property <color> muted: high-contrast ? system-foreground : #666b62;
+    out property <color> line: high-contrast ? system-foreground : #deded2;
+    out property <color> hover: high-contrast ? system-background : #e5e4db;
+    out property <color> selected: high-contrast ? system-highlight : #e9e9dc;
+    out property <color> alert: high-contrast ? system-background : #f3e0bd;
+    out property <color> alert-ink: high-contrast ? system-foreground : #5f401e;
+    out property <color> coral: #b74735;
+    out property <color> teal: #217366;
+    out property <color> indigo: #545c9b;
+}
+
+component Caption inherits Text { color: Tokens.muted; font-size: 12px; wrap: word-wrap; }
+component Heading inherits Text { color: Tokens.ink; font-size: 25px; font-weight: 600; wrap: word-wrap; }
+component Rule inherits Rectangle { height: 1px; background: Tokens.line; }
+component Action inherits Rectangle {
+    in property <string> text;
+    in property <string> description: root.text;
+    in property <Glyph> glyph: Glyph.none;
+    in property <color> tint: Tokens.ink;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    in property <bool> left-aligned: false;
+    in property <bool> quiet: false;
+    callback clicked();
+    height: 42px;
+    min-width: text == "" ? 36px : max(76px, content.min-width);
+    horizontal-stretch: 0;
+    border-radius: 8px;
+    opacity: enabled ? 1 : 0.45;
+    background: primary ? (Tokens.high-contrast ? Tokens.system-highlight : touch.pressed ? tint.darker(15%) : touch.has-hover ? tint.darker(5%) : tint) : (touch.pressed ? Tokens.line : touch.has-hover ? Tokens.hover : transparent);
+    border-color: Tokens.high-contrast ? Tokens.ink : primary ? tint : quiet ? transparent : Tokens.line;
+    border-width: 1px;
+    forward-focus: focus;
+    accessible-role: button;
+    accessible-label: description;
+    accessible-enabled: enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    animate background { duration: Tokens.reduced-motion ? 0ms : 100ms; easing: ease-out; }
+    property <color> foreground: primary ? (Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.paper) : (Tokens.high-contrast ? Tokens.ink : tint);
+    content := HorizontalLayout {
+        padding-left: root.text == "" ? 8px : 12px;
+        padding-right: root.text == "" ? 8px : 12px;
+        spacing: 8px;
+        alignment: root.left-aligned ? start : center;
+        if root.glyph != Glyph.none: Icon { glyph: root.glyph; ink: root.foreground; width: 18px; height: 18px; }
+        if root.text != "": Text { text: root.text; color: root.foreground; font-size: 14px; font-weight: 600; vertical-alignment: center; accessible-role: none; }
+    }
+    if focus.has-focus && root.enabled: Rectangle { x: 2px; y: 2px; width: parent.width - 4px; height: parent.height - 4px; border-width: 2px; border-color: root.foreground; border-radius: 6px; background: transparent; }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: root.enabled ? pointer : default; clicked => { focus.focus(); root.clicked(); } }
+    focus := FocusScope {
+        width: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) { root.clicked(); return accept; }
+            return reject;
+        }
+    }
+}
+
+component Ring inherits Rectangle {
+    in property <string> time;
+    in property <string> path;
+    in property <string> label;
+    in property <color> accent;
+    background: transparent;
+    Rectangle { x: 5px; y: 5px; width: parent.width - 10px; height: parent.height - 10px; background: transparent; border-width: 5px; border-color: #e5e1d6; border-radius: 200px; }
+    Path { width: parent.width; height: parent.height; viewbox-width: 240; viewbox-height: 240; commands: root.path; stroke: root.accent; stroke-width: 5px; fill: transparent; }
+    VerticalLayout {
+        alignment: center; spacing: 8px;
+        Text { text: root.time; font-family: "Consolas"; font-size: root.width >= 200px ? 48px : root.width >= 160px ? 36px : 28px; font-weight: 600; color: Tokens.ink; horizontal-alignment: center; }
+        Caption { text: root.label; horizontal-alignment: center; }
+    }
+}
+
+export component MainWindow inherits Window {
+    init => { Palette.color-scheme = ColorScheme.light; }
+    title: "Orbit · Pomodoro";
+    preferred-width: 940px; preferred-height: 740px;
+    min-width: 760px; min-height: 540px;
+    background: root.mica-active && !Tokens.high-contrast ? #f5f2ebdd : Tokens.canvas;
+    default-font-family: "Segoe UI";
+    default-font-size: 14px;
+    no-frame: true;
+    in property <bool> compact: false;
+    in property <string> time-text: "25:00";
+    in property <string> ring-path;
+    in property <string> mode-label: "Focus";
+    in property <string> state-label: "Ready when you are";
+    in property <string> active-task: "Choose one thing to focus on.";
+    in property <int> mode: 0;
+    in property <bool> running: false;
+    in property <bool> mica-active: false;
+    in property <int> cycle: 0;
+    in property <[TaskRow]> tasks;
+    in property <[WidgetRow]> widgets;
+    in property <[ReportDay]> report-days;
+    in property <string> report-title;
+    in property <string> report-time: "0m";
+    in property <string> report-partial: "0m";
+    in property <int> report-completed;
+    in-out property <int> report-period: 1;
+    in-out property <int> page: 0;
+    in-out property <string> message;
+    in-out property <string> task-title;
+    in-out property <int> task-estimate: 1;
+    in-out property <int> edit-id: -1;
+    in-out property <int> focus-minutes: 25;
+    in-out property <int> short-minutes: 5;
+    in-out property <int> long-minutes: 15;
+    in-out property <int> long-interval: 4;
+    in-out property <bool> auto-breaks;
+    in-out property <bool> auto-focus;
+    in-out property <int> volume: 65;
+    in-out property <int> sound: 0;
+    in-out property <bool> notifications: true;
+    in-out property <bool> reduced-motion;
+    in-out property <bool> mica;
+    in-out property <bool> autostart;
+    in-out property <string> toggle-hotkey;
+    in-out property <string> show-hotkey;
+    in-out property <string> skip-hotkey;
+    property <color> accent: Tokens.high-contrast ? Tokens.system-highlight : (mode == 0 ? Tokens.coral : (mode == 1 ? Tokens.teal : Tokens.indigo));
+    callback control(string);
+    callback select-mode(int);
+    callback task-action(int,string);
+    callback save-task();
+    callback save-settings();
+    callback preview-sound();
+    callback report-change(int,int);
+    callback widget-change(int,bool,int,bool);
+    callback widget-reset(int);
+    callback drag-window();
+    callback register-notifications();
+    callback open-data-folder();
+    callback navigate(int);
+
+    HorizontalLayout {
+        spacing: 0px;
+        Rectangle {
+            width: root.compact ? 160px : 176px; background: Tokens.high-contrast ? Tokens.canvas : #eae9df;
+            VerticalLayout {
+                padding: 18px; spacing: 10px;
+                HorizontalLayout { spacing: 8px; height: 46px; Icon { glyph: Glyph.orbit; ink: Tokens.coral; width: 27px; height: 27px; } Text { text: "Orbit"; font-size: 29px; font-weight: 700; color: Tokens.ink; vertical-alignment: center; } }
+                Caption { text: "A LITTLE MORE PRESENT"; font-size: 10px; height: 32px; }
+                for name[i] in ["Timer", "Tasks", "Reports", "Widgets", "Settings", "About"]: Action {
+                    text: name; glyph: i == 0 ? Glyph.timer : i == 1 ? Glyph.tasks : i == 2 ? Glyph.reports : i == 3 ? Glyph.widgets : i == 4 ? Glyph.settings : Glyph.info; left-aligned: true; quiet: true; primary: root.page == i; tint: Tokens.ink;
+                    clicked => { root.page = i; root.navigate(i); }
+                }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+                Caption { text: "One thing at a time."; }
+                Caption { text: "Local. Quiet. Yours."; font-size: 11px; }
+                Action { text: "Hide to tray"; glyph: Glyph.hide; quiet: true; left-aligned: true; clicked => { root.control("hide"); } }
+            }
+        }
+        VerticalLayout {
+            spacing: 0px;
+            Rectangle {
+                height: 45px; background: transparent;
+                TouchArea { mouse-cursor: move; pointer-event(event) => { if (event.kind == PointerEventKind.down) { root.drag-window(); } } }
+                HorizontalLayout {
+                    padding-left: 28px; padding-right: 12px; spacing: 8px;
+                    Caption { text: "ORBIT / FOCUS TIMER"; font-size: 11px; vertical-alignment: center; horizontal-stretch: 1; }
+                    Action { glyph: Glyph.minimize; width: 36px; height: 36px; quiet: true; description: "Minimize"; clicked => { root.control("minimize"); } }
+                    Action { glyph: Glyph.close; width: 36px; height: 36px; quiet: true; description: "Hide to tray"; clicked => { root.control("hide"); } }
+                }
+            }
+            if root.message != "": Rectangle {
+                height: max(54px, notice.min-height + 16px); background: Tokens.alert;
+                notice := HorizontalLayout {
+                    padding: 8px; spacing: 8px;
+                    Icon { glyph: Glyph.info; ink: Tokens.alert-ink; }
+                    Text { text: root.message; color: Tokens.alert-ink; wrap: word-wrap; horizontal-stretch: 1; font-size: 12px; }
+                    Action { glyph: Glyph.close; description: "Dismiss message"; width: 36px; height: 36px; quiet: true; clicked => { root.message = ""; } }
+                }
+            }
+            if root.page == 0: VerticalLayout {
+                padding-left: root.compact ? 24px : 38px; padding-right: root.compact ? 24px : 38px; padding-bottom: root.compact ? 16px : 25px; spacing: root.compact ? 8px : 14px;
+                HorizontalLayout {
+                    Heading { text: root.mode == 0 ? "Make room for focus." : "Take a little space."; horizontal-stretch: 1; }
+                    Caption { text: "SESSION " + (root.cycle + 1); vertical-alignment: center; }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    for name[i] in ["Focus", "Short break", "Long break"]: Action {
+                        text: name; glyph: i == 0 ? Glyph.timer : i == 1 ? Glyph.coffee : Glyph.moon; primary: root.mode == i; tint: root.accent; horizontal-stretch: 1;
+                        clicked => { root.select-mode(i); }
+                    }
+                }
+                Rectangle {
+                    background: transparent; vertical-stretch: 1; min-height: root.compact ? 100px : 160px;
+                    Ring { width: min(root.compact ? 180px : 252px, parent.height - 4px); height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                        time: root.time-text; path: root.ring-path; label: root.state-label; accent: root.accent; }
+                }
+                Text { text: root.active-task; font-size: 17px; font-weight: 600; color: Tokens.ink; horizontal-alignment: center; overflow: elide; }
+                Caption { text: root.mode == 0 ? "A small commitment. Your full attention." : "Rest is part of the work."; horizontal-alignment: center; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Action { text: "Reset"; glyph: Glyph.reset; clicked => { root.control("reset"); } }
+                    Action { text: root.running ? "Pause session" : "Start session"; glyph: root.running ? Glyph.pause : Glyph.play; primary: true; tint: root.accent; horizontal-stretch: 2; clicked => { root.control("toggle"); } }
+                    Action { text: "Skip"; glyph: Glyph.skip; clicked => { root.control("skip"); } }
+                }
+                Rule {}
+                HorizontalLayout {
+                    Caption { text: root.toggle-hotkey == "" ? "Global shortcut disabled" : root.toggle-hotkey + "  ·  Start / pause"; horizontal-stretch: 1; }
+                    Caption { text: "Sleep pauses your timer"; }
+                }
+            }
+            if root.page == 1: VerticalLayout {
+                padding: 28px; spacing: 15px;
+                Heading { text: "Give your attention a home."; }
+                Caption { text: "Select a task for your next session. The current session keeps its task."; }
+                HorizontalLayout {
+                    LineEdit { accessible-label: "Task title"; text <=> root.task-title; placeholder-text: "What would you like to work on?"; horizontal-stretch: 1; accepted => { root.save-task(); } }
+                    SpinBox { value <=> root.task-estimate; minimum: 1; maximum: 99; width: 76px; accessible-label: "Estimated pomodoros"; }
+                    Action { text: root.edit-id < 0 ? "Add task" : "Save task"; glyph: root.edit-id < 0 ? Glyph.add : Glyph.save; primary: true; tint: root.accent; clicked => { root.save-task(); } }
+                }
+                if root.edit-id >= 0: Button { text: "Cancel editing"; clicked => { root.edit-id = -1; root.task-title = ""; root.task-estimate = 1; } }
+                Rule {}
+                if root.tasks.length == 0: VerticalLayout {
+                    alignment: center; spacing: 12px;
+                    Text { text: "Start with one thing."; font-size: 23px; color: Tokens.ink; }
+                    Caption { text: "Add a task above and estimate how many focus sessions it needs."; wrap: word-wrap; }
+                }
+                ListView {
+                    vertical-stretch: 1;
+                        for task in root.tasks: Rectangle {
+                            height: 77px; background: task.selected ? Tokens.selected : transparent; border-radius: 8px;
+                            HorizontalLayout {
+                                padding: 9px; spacing: 9px;
+                                CheckBox { checked: task.done; accessible-label: "Complete " + task.title; toggled => { root.task-action(task.id,"done"); } }
+                                VerticalLayout {
+                                    spacing: 3px; horizontal-stretch: 1;
+                                    Text { text: task.title; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : task.done ? Tokens.muted : Tokens.ink; font-weight: 600; overflow: elide; }
+                                    Caption { color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.muted; text: task.completed + " / " + task.estimate + " pomodoros" + (task.selected ? " · Selected" : ""); }
+                                }
+                                Action { text: "Focus"; glyph: Glyph.play; height: 36px; enabled: !task.done; clicked => { root.task-action(task.id,"select"); } }
+                                Action { glyph: Glyph.edit; description: "Edit " + task.title; width: 36px; height: 36px; clicked => { root.task-action(task.id,"edit"); } }
+                                Action { glyph: Glyph.trash; description: "Delete " + task.title; tint: Tokens.coral; width: 36px; height: 36px; clicked => { root.task-action(task.id,"delete"); } }
+                            }
+                        }
+                    
+                }
+                Button { text: "Focus without a task"; clicked => { root.task-action(-1,"select"); } }
+            }
+            if root.page == 2: ScrollView {
+                VerticalLayout {
+                padding: 28px; spacing: 20px;
+                Heading { text: "Small sessions add up."; }
+                HorizontalLayout {
+                    ComboBox { model: ["Daily", "Weekly", "Monthly"]; current-index <=> root.report-period; selected(value) => { root.report-change(self.current-index,0); } }
+                    Action { glyph: Glyph.previous; description: "Previous period"; width: 36px; height: 36px; clicked => { root.report-change(root.report-period,-1); } }
+                    Text { text: root.report-title; wrap: word-wrap; font-size: 13px; color: Tokens.ink; horizontal-stretch: 1; horizontal-alignment: center; vertical-alignment: center; }
+                    Action { glyph: Glyph.next; description: "Next period"; width: 36px; height: 36px; clicked => { root.report-change(root.report-period,1); } }
+                    Button { text: "Today"; clicked => { root.report-change(root.report-period,2); } }
+                }
+                HorizontalLayout {
+                    spacing: 30px;
+                    VerticalLayout { Text { text: root.report-time; color: Tokens.ink; font-size: 33px; font-weight: 600; } Caption { text: "ACTIVE FOCUS"; } }
+                    VerticalLayout { Text { text: root.report-completed; color: Tokens.ink; font-size: 33px; font-weight: 600; } Caption { text: "COMPLETED POMODOROS"; } }
+                }
+                Rule {}
+                HorizontalLayout {
+                    spacing: 4px; height: root.compact ? 150px : 210px;
+                    for day in root.report-days: VerticalLayout {
+                        spacing: 8px;
+                        Rectangle { background: transparent; vertical-stretch: 1;
+                            Rectangle { x: 2px; y: parent.height - self.height; width: parent.width - 4px; height: max(2px, (parent.height - 28px) * day.fraction); background: root.accent; border-radius: 3px; }
+                            Text { text: root.report-days.length <= 7 ? day.minutes : ""; y: max(0px,parent.height - (parent.height - 28px)*day.fraction - 23px); color: Tokens.muted; font-size: 11px; horizontal-alignment: center; width: parent.width; }
+                        }
+                        Caption { text: day.label; horizontal-alignment: center; font-size: root.report-days.length > 7 ? 10px : 12px; }
+                    }
+                }
+                Caption { text: root.report-partial + " from partial or in-progress sessions. Pauses and sleep are excluded."; wrap: word-wrap; }
+                Caption { text: "Reports refresh on session changes and when opened. Calendar uses your Windows time zone."; wrap: word-wrap; }
+            
+                }
+            }
+            if root.page == 3: ScrollView {
+                VerticalLayout {
+                padding: 28px; spacing: 18px;
+                Heading { text: "A little focus, anywhere."; }
+                Caption { text: "Each widget shares your timer. Drag its header to move it."; }
+                for widget[i] in root.widgets: VerticalLayout {
+                    spacing: 8px;
+                    Rule {}
+                    HorizontalLayout {
+                        VerticalLayout { horizontal-stretch: 1; Text { text: widget.title; font-size: 18px; font-weight: 600; color: Tokens.ink; } Caption { text: widget.description; } }
+                        CheckBox { text: "Show"; checked: widget.enabled; toggled => { root.widget-change(i,self.checked,widget.layer,widget.click-through); } }
+                    }
+                    HorizontalLayout {
+                        ComboBox { model: ["Bottom", "Normal", "Always on top"]; current-index: widget.layer; selected(value) => { root.widget-change(i,widget.enabled,self.current-index,widget.click-through); } }
+                        CheckBox { text: "Click through"; checked: widget.click-through; toggled => { root.widget-change(i,widget.enabled,widget.layer,self.checked); } }
+                        Action { text: "Reset position"; glyph: Glyph.reset; height: 36px; clicked => { root.widget-reset(i); } }
+                    }
+                }
+
+                Caption { text: "Locked out? Right-click the tray icon and choose Unlock all widgets."; wrap: word-wrap; }
+            
+                }
+            }
+            if root.page == 4: ScrollView {
+                VerticalLayout {
+                    padding: 28px; spacing: 15px;
+                    Heading { text: "Find your rhythm."; }
+                    Text { text: "SESSION LENGTHS"; color: Tokens.muted; font-size: 11px; }
+                    HorizontalLayout {
+                        spacing: 14px;
+                        VerticalLayout { Caption { text: "Focus / minutes"; } SpinBox { accessible-label: "Focus duration in minutes"; value <=> root.focus-minutes; minimum: 1; maximum: 180; } }
+                        VerticalLayout { Caption { text: "Short break"; } SpinBox { accessible-label: "Short break duration in minutes"; value <=> root.short-minutes; minimum: 1; maximum: 180; } }
+                        VerticalLayout { Caption { text: "Long break"; } SpinBox { accessible-label: "Long break duration in minutes"; value <=> root.long-minutes; minimum: 1; maximum: 180; } }
+                    }
+                    HorizontalLayout { Caption { text: "Long break after completed focus sessions"; horizontal-stretch: 1; vertical-alignment: center; } SpinBox { accessible-label: "Long break interval"; value <=> root.long-interval; minimum: 1; maximum: 12; } }
+                    CheckBox { text: "Automatically start breaks"; checked <=> root.auto-breaks; }
+                    CheckBox { text: "Automatically start focus sessions"; checked <=> root.auto-focus; }
+                    Rule {}
+                    Text { text: "SOUND & APPEARANCE"; color: Tokens.muted; font-size: 11px; }
+                    HorizontalLayout {
+                        ComboBox { model: ["Soft bell", "Wood chime", "Gentle double"]; current-index <=> root.sound; }
+                        Slider { accessible-label: "Alarm volume"; value: root.volume; minimum: 0; maximum: 100; changed(value) => { root.volume = round(value); } }
+                        Caption { text: root.volume + "%"; vertical-alignment: center; }
+                        Action { text: "Preview"; glyph: Glyph.sound; height: 36px; clicked => { root.preview-sound(); } }
+                    }
+                    CheckBox { text: "Windows notifications"; checked <=> root.notifications; }
+                    CheckBox { text: "Reduce motion"; checked <=> root.reduced-motion; }
+                    CheckBox { text: "Use Mica backdrop when available"; checked <=> root.mica; }
+                    CheckBox { text: "Start in the tray when I sign in"; checked <=> root.autostart; }
+                    Rule {}
+                    Text { text: "GLOBAL SHORTCUTS"; color: Tokens.muted; font-size: 11px; }
+                    HorizontalLayout { Caption { text: "Start / pause"; width: 110px; vertical-alignment: center; } LineEdit { accessible-label: "Start or pause shortcut"; text <=> root.toggle-hotkey; placeholder-text: "Ctrl+Alt+P"; } }
+                    HorizontalLayout { Caption { text: "Show app"; width: 110px; vertical-alignment: center; } LineEdit { accessible-label: "Show app shortcut"; text <=> root.show-hotkey; placeholder-text: "Ctrl+Alt+O"; } }
+                    HorizontalLayout { Caption { text: "Skip"; width: 110px; vertical-alignment: center; } LineEdit { accessible-label: "Skip session shortcut"; text <=> root.skip-hotkey; placeholder-text: "Ctrl+Alt+N"; } }
+                    Caption { text: "Use Ctrl, Alt, Shift, Win with a letter, number, Space, or F1–F12. Empty disables a shortcut."; wrap: word-wrap; }
+                    Action { text: "Save settings"; glyph: Glyph.save; primary: true; tint: root.accent; clicked => { root.save-settings(); } }
+                    Caption { text: "Duration changes apply to your next session. Sleep always pauses elapsed time."; wrap: word-wrap; }
+                    HorizontalLayout {
+                        Action { text: "Notifications"; description: "Set up notifications"; glyph: Glyph.bell; height: 36px; clicked => { root.register-notifications(); } }
+                        Action { text: "Data folder"; description: "Open data folder"; glyph: Glyph.folder; height: 36px; clicked => { root.open-data-folder(); } }
+                        Action { text: "Quit Orbit"; glyph: Glyph.close; height: 36px; clicked => { root.control("quit"); } }
+                    }
+                    Caption { text: "Orbit 0.1.0 · Your data stays on this computer."; wrap: word-wrap; }
+                }
+            }
+            if root.page == 5: VerticalLayout {
+                padding: 38px; spacing: 20px; alignment: start;
+                Heading { text: "Orbit"; }
+                Text { text: "A little more present."; font-size: 22px; color: Tokens.ink; }
+                Caption { text: "Version 0.1.0 · Windows 11 · Local and offline"; }
+                Rule {}
+                Caption { text: "Application source is licensed under MIT. Third-party licenses are included with the download."; wrap: word-wrap; }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+            }
+        }
+    }
+}
+
+export component TimerWidget inherits Window {
+    init => { Palette.color-scheme = ColorScheme.light; }
+    title: "Orbit · Timer widget"; width: 230px; height: 284px;
+    no-frame: true; background: Tokens.paper; default-font-family: "Segoe UI";
+    in property <string> time-text; in property <string> ring-path; in property <string> mode-label;
+    in property <color> accent: Tokens.coral; in property <bool> running;
+    callback control(string); callback drag-window();
+    VerticalLayout {
+        padding: 15px; spacing: 10px;
+        Rectangle { height: 24px; background: transparent;
+            Text { text: "ORBIT / " + root.mode-label; color: Tokens.muted; font-size: 10px; vertical-alignment: center; }
+            TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
+        }
+        Ring { time: root.time-text; path: root.ring-path; label: root.mode-label; accent: root.accent; width: 174px; height: 174px; }
+        HorizontalLayout {
+            Action { text: root.running ? "Pause" : "Start"; glyph: root.running ? Glyph.pause : Glyph.play; height: 36px; clicked => { root.control("toggle"); } }
+            Action { glyph: Glyph.skip; description: "Skip session"; width: 36px; height: 36px; clicked => { root.control("skip"); } }
+            Action { glyph: Glyph.close; description: "Close timer widget"; width: 36px; height: 36px; clicked => { root.control("close"); } }
+        }
+    }
+}
+export component TasksWidget inherits Window {
+    init => { Palette.color-scheme = ColorScheme.light; }
+    title: "Orbit · Today widget"; width: 320px; height: 330px;
+    no-frame: true; background: Tokens.paper; default-font-family: "Segoe UI";
+    in property <[TaskRow]> tasks; in property <string> today-label: "Today's focus";
+    callback control(string); callback select-task(int); callback drag-window();
+    VerticalLayout {
+        padding: 16px; spacing: 12px;
+        Rectangle { height: 38px; background: transparent;
+            VerticalLayout { Text { text: "Today, one thing at a time."; color: Tokens.ink; font-size: 16px; font-weight: 600; } Caption { text: root.today-label; } }
+            TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
+        }
+        Rule {}
+        if root.tasks.length == 0: Caption { text: "Add your first task in Orbit."; }
+        ListView {
+            vertical-stretch: 1;
+                for task in root.tasks: Rectangle {
+                    height: 48px; background: task.selected ? Tokens.selected : transparent; border-radius: 5px;
+                    HorizontalLayout {
+                        padding: 5px;
+                        VerticalLayout { horizontal-stretch: 1; Text { text: task.title; overflow: elide; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.ink; } Caption { color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.muted; text: task.completed + " / " + task.estimate + " sessions"; } }
+                        Action { glyph: Glyph.play; width: 36px; height: 36px; enabled: !task.done; description: "Select " + task.title; clicked => { root.select-task(task.id); } }
+                    }
+                }
+            
+        }
+        HorizontalLayout { Action { text: "Open Orbit"; glyph: Glyph.orbit; height: 36px; clicked => { root.control("show"); } } Action { glyph: Glyph.close; description: "Close task widget"; width: 36px; height: 36px; clicked => { root.control("close"); } } }
+    }
+}
+export component MiniWidget inherits Window {
+    init => { Palette.color-scheme = ColorScheme.light; }
+    title: "Orbit · Mini timer"; width: 320px; height: 78px;
+    no-frame: true; background: Tokens.paper; default-font-family: "Segoe UI";
+    in property <string> time-text; in property <string> mode-label; in property <bool> running;
+    callback control(string); callback drag-window();
+    HorizontalLayout {
+        padding: 10px; spacing: 8px;
+        Rectangle { horizontal-stretch: 1; background: transparent;
+            VerticalLayout { Text { text: root.time-text; font-family: "Consolas"; font-size: 24px; color: Tokens.ink; } Caption { text: root.mode-label; font-size: 10px; } }
+            TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
+        }
+        Action { text: root.running ? "Pause" : "Start"; glyph: root.running ? Glyph.pause : Glyph.play; height: 36px; clicked => { root.control("toggle"); } }
+        Action { glyph: Glyph.close; description: "Close mini timer"; width: 36px; height: 36px; clicked => { root.control("close"); } }
+    }
+}

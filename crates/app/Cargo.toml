@@ -1,0 +1,24 @@
+[package]
+name = "orbit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[features]
+default = []
+gpu = ["slint/renderer-femtovg"]
+diagnostics = ["dep:png"]
+
+[dependencies]
+focus-core = { path = "../focus-core" }
+focus-storage = { path = "../storage" }
+platform-win = { path = "../platform-win" }
+serde_json.workspace = true
+slint = { version = "~1.18.1", default-features = false, features = ["std", "compat-1-18", "backend-winit", "renderer-software", "raw-window-handle-06", "accessibility"] }
+raw-window-handle = "0.6"
+png = { version = "0.18", optional = true }
+
+[build-dependencies]
+slint-build = "~1.18.1"
+winresource = "0.1"

@@ -1,0 +1,11 @@
+{
+  "application": "Orbit",
+  "executableSha256": "E396E1B066A603D1640C3F2BCA3B0F33588A6D3F660F0A7548314C2352410980",
+  "ordinaryTestsPassed": 28,
+  "clippyPassed": true,
+  "canonicalDatabaseCreated": true,
+  "legacyDatabaseReused": true,
+  "unicodeTaskPreserved": true,
+  "allWindowsSmokePassed": true,
+  "sqliteIntegrity": "ok"
+}

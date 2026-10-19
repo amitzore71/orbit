@@ -1,0 +1,39 @@
+// Original 24-unit outline icons. Native paths: no fonts, raster files, or runtime library.
+export enum Glyph { none, orbit, timer, tasks, reports, widgets, settings, info, play, pause, skip, reset, add, edit, trash, close, minimize, previous, next, hide, folder, bell, sound, save, coffee, moon, check }
+
+export component Icon inherits Path {
+    in property <Glyph> glyph: Glyph.none;
+    in property <color> ink: #292c29;
+    width: 20px; height: 20px;
+    viewbox-width: 24; viewbox-height: 24;
+    stroke: root.ink; stroke-width: 1.8px;
+    fill: root.glyph == Glyph.play ? root.ink : transparent;
+    accessible-role: none;
+    commands:
+        glyph == Glyph.orbit ? "M19 12A7 7 0 1 1 5 12A7 7 0 1 1 19 12 M3 17C0 12 18 1 21 7C24 12 6 23 3 17" :
+        glyph == Glyph.timer ? "M20 13A8 8 0 1 1 4 13A8 8 0 1 1 20 13 M12 9V13L16 15 M9 2H15 M12 2V5" :
+        glyph == Glyph.tasks ? "M9 5H21 M9 12H21 M9 19H21 M2 4L4 6L7 2 M2 11L4 13L7 9 M2 18L4 20L7 16" :
+        glyph == Glyph.reports ? "M4 3V20H21 M9 16V11 M14 16V7 M19 16V4" :
+        glyph == Glyph.widgets ? "M3 3H10V10H3Z M14 3H21V10H14Z M3 14H10V21H3Z M14 14H21V21H14Z" :
+        glyph == Glyph.settings ? "M9 3H15L16 6L19 7L22 11L20 14L19 17L15 19L14 22H10L9 19L5 17L4 14L2 11L5 7L8 6Z M16 12A4 4 0 1 1 8 12A4 4 0 1 1 16 12" :
+        glyph == Glyph.info ? "M21 12A9 9 0 1 1 3 12A9 9 0 1 1 21 12 M12 10V17 M12 6V7" :
+        glyph == Glyph.play ? "M8 5L19 12L8 19Z" :
+        glyph == Glyph.pause ? "M8 5V19 M16 5V19" :
+        glyph == Glyph.skip ? "M5 5L15 12L5 19Z M19 5V19" :
+        glyph == Glyph.reset ? "M4 10A8 8 0 1 1 5 18 M4 4V10H10" :
+        glyph == Glyph.add ? "M12 4V20 M4 12H20" :
+        glyph == Glyph.edit ? "M4 16L16 4L20 8L8 20H4Z M13 7L17 11" :
+        glyph == Glyph.trash ? "M3 6H21 M9 6V3H15V6 M6 6L7 21H17L18 6 M10 10V17 M14 10V17" :
+        glyph == Glyph.close ? "M6 6L18 18 M18 6L6 18" :
+        glyph == Glyph.minimize ? "M5 12H19" :
+        glyph == Glyph.previous ? "M15 5L8 12L15 19" :
+        glyph == Glyph.next ? "M9 5L16 12L9 19" :
+        glyph == Glyph.hide ? "M3 4H21V17H3Z M8 21H16 M8 10L12 14L16 10 M12 6V14" :
+        glyph == Glyph.folder ? "M3 7V20H21V7H11L9 4H3V7Z" :
+        glyph == Glyph.bell ? "M5 17H19L17 14V9A5 5 0 0 0 7 9V14Z M10 21H14 M12 2V4" :
+        glyph == Glyph.sound ? "M3 9H7L12 5V19L7 15H3Z M16 8C19 10 19 14 16 16 M19 5C24 9 24 15 19 19" :
+        glyph == Glyph.save ? "M4 3H17L21 7V21H3V3Z M7 3V9H16V3 M7 21V14H17V21" :
+        glyph == Glyph.coffee ? "M4 8H17V14A6 6 0 0 1 5 14Z M17 8H19A3 3 0 0 1 19 14H17 M3 21H20 M8 2V5 M13 2V5" :
+        glyph == Glyph.moon ? "M20 15A9 9 0 0 1 9 3A9 9 0 1 0 20 15Z" :
+        glyph == Glyph.check ? "M4 12L9 17L20 6" : "";
+}

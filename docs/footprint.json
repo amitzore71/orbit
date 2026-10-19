@@ -1,0 +1,89 @@
+{
+  "measuredAt": "2026-10-19T11:23:47.8878345+05:30",
+  "os": "Microsoft Windows NT 10.0.26300.0",
+  "logicalProcessors": 16,
+  "executable": "still-pomodoro.exe",
+  "executableBytes": 10555392,
+  "executableSha256": "4E0ACF809C90E7EA291F53514A20229D3F48065940AF9D7D920443E6C7271F26",
+  "note": "CPU uses GetProcessTimes directly and is relative to one logical core; zero means below the accounting resolution during this sample. QueryProcessCycleTime deltas are also recorded. Private bytes are committed private memory; working set includes shared resident pages. Private working set uses QueryWorkingSet non-shared pages. No working-set trimming is performed. Each scenario uses an empty isolated database. Input-idle is not first paint.",
+  "scenarios": [
+    {
+      "scenario": "tray-idle",
+      "privateBytesMean": 3625847,
+      "privateBytesPeak": 3653632,
+      "workingSetBytesMean": 21420442,
+      "privateWorkingSetBytesMean": 2822281,
+      "cpuPercentOfOneCore": 0.0,
+      "cpuMilliseconds": 0.0,
+      "cpuCycles": 4875645,
+      "sampleSeconds": 60,
+      "warmupSeconds": 10,
+      "startupToNativeInputIdleMs": 234.2391
+    },
+    {
+      "scenario": "tray-running",
+      "privateBytesMean": 3634790,
+      "privateBytesPeak": 3661824,
+      "workingSetBytesMean": 21446246,
+      "privateWorkingSetBytesMean": 2825557,
+      "cpuPercentOfOneCore": 0.0,
+      "cpuMilliseconds": 0.0,
+      "cpuCycles": 4541866,
+      "sampleSeconds": 60,
+      "warmupSeconds": 10,
+      "startupToNativeInputIdleMs": 86.5075
+    },
+    {
+      "scenario": "main-paused",
+      "privateBytesMean": 10691447,
+      "privateBytesPeak": 10719232,
+      "workingSetBytesMean": 29755802,
+      "privateWorkingSetBytesMean": 9597065,
+      "cpuPercentOfOneCore": 0.0,
+      "cpuMilliseconds": 0.0,
+      "cpuCycles": 14713799,
+      "sampleSeconds": 60,
+      "warmupSeconds": 10,
+      "startupToNativeInputIdleMs": 158.5562
+    },
+    {
+      "scenario": "main-running",
+      "privateBytesMean": 10706739,
+      "privateBytesPeak": 10981376,
+      "workingSetBytesMean": 29823795,
+      "privateWorkingSetBytesMean": 9714210,
+      "cpuPercentOfOneCore": 1.6358,
+      "cpuMilliseconds": 1000.0,
+      "cpuCycles": 693857874,
+      "sampleSeconds": 60,
+      "warmupSeconds": 10,
+      "startupToNativeInputIdleMs": 89.6668
+    },
+    {
+      "scenario": "main-minimized-running",
+      "privateBytesMean": 10605431,
+      "privateBytesPeak": 10633216,
+      "workingSetBytesMean": 29821338,
+      "privateWorkingSetBytesMean": 9773193,
+      "cpuPercentOfOneCore": 0.0256,
+      "cpuMilliseconds": 15.625,
+      "cpuCycles": 7147212,
+      "sampleSeconds": 60,
+      "warmupSeconds": 10,
+      "startupToNativeInputIdleMs": 77.8469
+    },
+    {
+      "scenario": "all-widgets-running",
+      "privateBytesMean": 13402931,
+      "privateBytesPeak": 15269888,
+      "workingSetBytesMean": 32895454,
+      "privateWorkingSetBytesMean": 12310391,
+      "cpuPercentOfOneCore": 1.6126,
+      "cpuMilliseconds": 984.375,
+      "cpuCycles": 4244196460,
+      "sampleSeconds": 60,
+      "warmupSeconds": 10,
+      "startupToNativeInputIdleMs": 80.8707
+    }
+  ]
+}

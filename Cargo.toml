@@ -1,0 +1,33 @@
+[workspace]
+members = ["crates/focus-core", "crates/storage", "crates/platform-win", "crates/app"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows = { version = "0.62", features = [
+    "Win32_Foundation", "Win32_System_SystemInformation", "Win32_System_Threading",
+    "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant",
+    "Win32_System_Power", "Win32_System_WindowsProgramming", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_UI_Controls",
+    "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Media_Audio",
+    "Win32_Media_Multimedia", "Win32_Security", "Win32_Storage_FileSystem", "Win32_Storage_EnhancedStorage",
+    "UI_Notifications", "Data_Xml_Dom"
+] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.release-speed]
+inherits = "release"
+opt-level = 3

@@ -1,0 +1,8 @@
+{
+  "application": "Orbit",
+  "version": "0.1.0",
+  "executable": "orbit.exe",
+  "executableBytes": 10555904,
+  "executableSha256": "E396E1B066A603D1640C3F2BCA3B0F33588A6D3F660F0A7548314C2352410980",
+  "historicalAuditSha256": "4E0ACF809C90E7EA291F53514A20229D3F48065940AF9D7D920443E6C7271F26"
+}
