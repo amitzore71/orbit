@@ -1,4 +1,4 @@
-import { Palette, Button, LineEdit, SpinBox, CheckBox, ComboBox, Slider, ScrollView, ListView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Palette, LineEdit, SpinBox, CheckBox, ComboBox, Slider, ScrollView, ListView } from "std-widgets.slint";
 import { Icon, Glyph } from "icons.slint";
 
 export struct TaskRow { id: int, title: string, estimate: int, completed: int, done: bool, selected: bool }
@@ -39,28 +39,34 @@ component Action inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> left-aligned: false;
     in property <bool> quiet: false;
+    in property <bool> checkable: false;
+    in property <bool> checked: false;
+    in property <bool> on-selection: false;
     callback clicked();
     height: 42px;
     min-width: text == "" ? 36px : max(76px, content.min-width);
     horizontal-stretch: 0;
+    vertical-stretch: 0;
     border-radius: 8px;
     opacity: enabled ? 1 : 0.45;
     background: primary ? (Tokens.high-contrast ? Tokens.system-highlight : touch.pressed ? tint.darker(15%) : touch.has-hover ? tint.darker(5%) : tint) : (touch.pressed ? Tokens.line : touch.has-hover ? Tokens.hover : transparent);
-    border-color: Tokens.high-contrast ? Tokens.ink : primary ? tint : quiet ? transparent : Tokens.line;
+    border-color: Tokens.high-contrast ? root.foreground : primary ? tint : quiet ? transparent : Tokens.line;
     border-width: 1px;
     forward-focus: focus;
     accessible-role: button;
     accessible-label: description;
     accessible-enabled: enabled;
+    accessible-checkable: checkable;
+    accessible-checked: checked;
     accessible-action-default => { if root.enabled { root.clicked(); } }
     animate background { duration: Tokens.reduced-motion ? 0ms : 100ms; easing: ease-out; }
-    property <color> foreground: primary ? (Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.paper) : (Tokens.high-contrast ? Tokens.ink : tint);
+    property <color> foreground: primary || (on-selection && Tokens.high-contrast && !touch.has-hover && !touch.pressed) ? (Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.paper) : (Tokens.high-contrast ? Tokens.ink : tint);
     content := HorizontalLayout {
         padding-left: root.text == "" ? 8px : 12px;
         padding-right: root.text == "" ? 8px : 12px;
         spacing: 8px;
         alignment: root.left-aligned ? start : center;
-        if root.glyph != Glyph.none: Icon { glyph: root.glyph; ink: root.foreground; width: 18px; height: 18px; }
+        if root.glyph != Glyph.none: Icon { glyph: root.glyph; ink: root.foreground; width: 18px; height: 18px; y: (parent.height - self.height) / 2; }
         if root.text != "": Text { text: root.text; color: root.foreground; font-size: 14px; font-weight: 600; vertical-alignment: center; accessible-role: none; }
     }
     if focus.has-focus && root.enabled: Rectangle { x: 2px; y: 2px; width: parent.width - 4px; height: parent.height - 4px; border-width: 2px; border-color: root.foreground; border-radius: 6px; background: transparent; }
@@ -81,8 +87,8 @@ component Ring inherits Rectangle {
     in property <string> label;
     in property <color> accent;
     background: transparent;
-    Rectangle { x: 5px; y: 5px; width: parent.width - 10px; height: parent.height - 10px; background: transparent; border-width: 5px; border-color: #e5e1d6; border-radius: 200px; }
-    Path { width: parent.width; height: parent.height; viewbox-width: 240; viewbox-height: 240; commands: root.path; stroke: root.accent; stroke-width: 5px; fill: transparent; }
+    Path { width: parent.width; height: parent.height; viewbox-width: 240; viewbox-height: 240; commands: "M120 5 A115 115 0 1 1 120 235 A115 115 0 1 1 120 5"; stroke: Tokens.line; stroke-width: 5px; fill: transparent; }
+    Path { width: parent.width; height: parent.height; viewbox-width: 240; viewbox-height: 240; commands: root.path; stroke: Tokens.high-contrast ? Tokens.system-highlight : root.accent; stroke-width: 5px; stroke-line-cap: round; fill: transparent; }
     VerticalLayout {
         alignment: center; spacing: 8px;
         Text { text: root.time; font-family: "Consolas"; font-size: root.width >= 200px ? 48px : root.width >= 160px ? 36px : 28px; font-weight: 600; color: Tokens.ink; horizontal-alignment: center; }
@@ -158,10 +164,10 @@ export component MainWindow inherits Window {
             width: root.compact ? 160px : 176px; background: Tokens.high-contrast ? Tokens.canvas : #eae9df;
             VerticalLayout {
                 padding: 18px; spacing: 10px;
-                HorizontalLayout { spacing: 8px; height: 46px; Icon { glyph: Glyph.orbit; ink: Tokens.coral; width: 27px; height: 27px; } Text { text: "Orbit"; font-size: 29px; font-weight: 700; color: Tokens.ink; vertical-alignment: center; } }
+                HorizontalLayout { spacing: 8px; height: 46px; Icon { glyph: Glyph.orbit; ink: Tokens.high-contrast ? Tokens.ink : Tokens.coral; width: 27px; height: 27px; y: (parent.height - self.height) / 2; } Text { text: "Orbit"; font-size: 29px; font-weight: 700; color: Tokens.ink; vertical-alignment: center; } }
                 Caption { text: "A LITTLE MORE PRESENT"; font-size: 10px; height: 32px; }
                 for name[i] in ["Timer", "Tasks", "Reports", "Widgets", "Settings", "About"]: Action {
-                    text: name; glyph: i == 0 ? Glyph.timer : i == 1 ? Glyph.tasks : i == 2 ? Glyph.reports : i == 3 ? Glyph.widgets : i == 4 ? Glyph.settings : Glyph.info; left-aligned: true; quiet: true; primary: root.page == i; tint: Tokens.ink;
+                    text: name; glyph: i == 0 ? Glyph.timer : i == 1 ? Glyph.tasks : i == 2 ? Glyph.reports : i == 3 ? Glyph.widgets : i == 4 ? Glyph.settings : Glyph.info; left-aligned: true; quiet: true; primary: root.page == i; checkable: true; checked: root.page == i; tint: Tokens.ink;
                     clicked => { root.page = i; root.navigate(i); }
                 }
                 Rectangle { vertical-stretch: 1; background: transparent; }
@@ -178,15 +184,15 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     padding-left: 28px; padding-right: 12px; spacing: 8px;
                     Caption { text: "ORBIT / FOCUS TIMER"; font-size: 11px; vertical-alignment: center; horizontal-stretch: 1; }
-                    Action { glyph: Glyph.minimize; width: 36px; height: 36px; quiet: true; description: "Minimize"; clicked => { root.control("minimize"); } }
-                    Action { glyph: Glyph.close; width: 36px; height: 36px; quiet: true; description: "Hide to tray"; clicked => { root.control("hide"); } }
+                    Action { glyph: Glyph.minimize; width: 36px; height: 36px; y: (parent.height - self.height) / 2; quiet: true; description: "Minimize"; clicked => { root.control("minimize"); } }
+                    Action { glyph: Glyph.close; width: 36px; height: 36px; y: (parent.height - self.height) / 2; quiet: true; description: "Hide to tray"; clicked => { root.control("hide"); } }
                 }
             }
             if root.message != "": Rectangle {
                 height: max(54px, notice.min-height + 16px); background: Tokens.alert;
                 notice := HorizontalLayout {
                     padding: 8px; spacing: 8px;
-                    Icon { glyph: Glyph.info; ink: Tokens.alert-ink; }
+                    Icon { glyph: Glyph.info; ink: Tokens.alert-ink; y: (parent.height - self.height) / 2; }
                     Text { text: root.message; color: Tokens.alert-ink; wrap: word-wrap; horizontal-stretch: 1; font-size: 12px; }
                     Action { glyph: Glyph.close; description: "Dismiss message"; width: 36px; height: 36px; quiet: true; clicked => { root.message = ""; } }
                 }
@@ -200,7 +206,7 @@ export component MainWindow inherits Window {
                 HorizontalLayout {
                     spacing: 8px;
                     for name[i] in ["Focus", "Short break", "Long break"]: Action {
-                        text: name; glyph: i == 0 ? Glyph.timer : i == 1 ? Glyph.coffee : Glyph.moon; primary: root.mode == i; tint: root.accent; horizontal-stretch: 1;
+                        text: name; glyph: i == 0 ? Glyph.timer : i == 1 ? Glyph.coffee : Glyph.moon; primary: root.mode == i; checkable: true; checked: root.mode == i; tint: root.accent; horizontal-stretch: 1;
                         clicked => { root.select-mode(i); }
                     }
                 }
@@ -228,11 +234,12 @@ export component MainWindow inherits Window {
                 Heading { text: "Give your attention a home."; }
                 Caption { text: "Select a task for your next session. The current session keeps its task."; }
                 HorizontalLayout {
-                    LineEdit { accessible-label: "Task title"; text <=> root.task-title; placeholder-text: "What would you like to work on?"; horizontal-stretch: 1; accepted => { root.save-task(); } }
-                    SpinBox { value <=> root.task-estimate; minimum: 1; maximum: 99; width: 76px; accessible-label: "Estimated pomodoros"; }
-                    Action { text: root.edit-id < 0 ? "Add task" : "Save task"; glyph: root.edit-id < 0 ? Glyph.add : Glyph.save; primary: true; tint: root.accent; clicked => { root.save-task(); } }
+                    spacing: 10px;
+                    VerticalLayout { spacing: 6px; horizontal-stretch: 1; Caption { text: "Task"; height: 16px; } LineEdit { height: 42px; accessible-label: "Task title"; text <=> root.task-title; placeholder-text: "What would you like to work on?"; accepted => { root.save-task(); } } }
+                    VerticalLayout { spacing: 6px; Caption { text: "Sessions"; height: 16px; } SpinBox { height: 42px; value <=> root.task-estimate; minimum: 1; maximum: 99; width: 80px; accessible-label: "Estimated pomodoros"; } }
+                    VerticalLayout { spacing: 6px; Caption { text: " "; height: 16px; } Action { text: root.edit-id < 0 ? "Add task" : "Save task"; glyph: root.edit-id < 0 ? Glyph.add : Glyph.save; primary: true; tint: root.accent; enabled: root.task-title != ""; clicked => { root.save-task(); } } }
                 }
-                if root.edit-id >= 0: Button { text: "Cancel editing"; clicked => { root.edit-id = -1; root.task-title = ""; root.task-estimate = 1; } }
+                if root.edit-id >= 0: Action { text: "Cancel editing"; glyph: Glyph.close; clicked => { root.edit-id = -1; root.task-title = ""; root.task-estimate = 1; } }
                 Rule {}
                 if root.tasks.length == 0: VerticalLayout {
                     alignment: center; spacing: 12px;
@@ -247,29 +254,37 @@ export component MainWindow inherits Window {
                                 padding: 9px; spacing: 9px;
                                 CheckBox { checked: task.done; accessible-label: "Complete " + task.title; toggled => { root.task-action(task.id,"done"); } }
                                 VerticalLayout {
-                                    spacing: 3px; horizontal-stretch: 1;
-                                    Text { text: task.title; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : task.done ? Tokens.muted : Tokens.ink; font-weight: 600; overflow: elide; }
-                                    Caption { color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.muted; text: task.completed + " / " + task.estimate + " pomodoros" + (task.selected ? " · Selected" : ""); }
+                                    spacing: 3px; horizontal-stretch: 1; alignment: center;
+                                    Text { text: task.title; vertical-stretch: 0; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : task.done ? Tokens.muted : Tokens.ink; font-weight: 600; overflow: elide; }
+                                    Caption { vertical-stretch: 0; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.muted; text: task.completed + " / " + task.estimate + " pomodoros"; }
                                 }
-                                Action { text: "Focus"; glyph: Glyph.play; height: 36px; enabled: !task.done; clicked => { root.task-action(task.id,"select"); } }
-                                Action { glyph: Glyph.edit; description: "Edit " + task.title; width: 36px; height: 36px; clicked => { root.task-action(task.id,"edit"); } }
-                                Action { glyph: Glyph.trash; description: "Delete " + task.title; tint: Tokens.coral; width: 36px; height: 36px; clicked => { root.task-action(task.id,"delete"); } }
+                                VerticalLayout {
+                                    horizontal-stretch: 0; alignment: center;
+                                    HorizontalLayout {
+                                        height: 36px; spacing: 9px;
+                                        Action { text: task.done ? "Done" : task.selected ? "Selected" : "Focus"; glyph: task.done || task.selected ? Glyph.check : Glyph.play; description: task.done ? "Completed: " + task.title : "Select " + task.title + " for focus"; on-selection: task.selected; height: 36px; enabled: !task.done; clicked => { root.task-action(task.id,"select"); } }
+                                        Action { glyph: Glyph.edit; description: "Edit " + task.title; on-selection: task.selected; width: 36px; height: 36px; clicked => { root.task-action(task.id,"edit"); } }
+                                        Action { glyph: Glyph.trash; description: "Delete " + task.title; on-selection: task.selected; tint: Tokens.coral; width: 36px; height: 36px; clicked => { root.task-action(task.id,"delete"); } }
+                                    }
+                                }
                             }
                         }
                     
                 }
-                Button { text: "Focus without a task"; clicked => { root.task-action(-1,"select"); } }
+                Action { text: "Focus without a task"; glyph: Glyph.timer; clicked => { root.task-action(-1,"select"); } }
             }
             if root.page == 2: ScrollView {
                 VerticalLayout {
+                alignment: start;
                 padding: 28px; spacing: 20px;
                 Heading { text: "Small sessions add up."; }
                 HorizontalLayout {
-                    ComboBox { model: ["Daily", "Weekly", "Monthly"]; current-index <=> root.report-period; selected(value) => { root.report-change(self.current-index,0); } }
+                    spacing: 8px;
+                    ComboBox { accessible-label: "Report period"; model: ["Daily", "Weekly", "Monthly"]; current-index <=> root.report-period; selected(value) => { root.report-change(self.current-index,0); } }
                     Action { glyph: Glyph.previous; description: "Previous period"; width: 36px; height: 36px; clicked => { root.report-change(root.report-period,-1); } }
                     Text { text: root.report-title; wrap: word-wrap; font-size: 13px; color: Tokens.ink; horizontal-stretch: 1; horizontal-alignment: center; vertical-alignment: center; }
                     Action { glyph: Glyph.next; description: "Next period"; width: 36px; height: 36px; clicked => { root.report-change(root.report-period,1); } }
-                    Button { text: "Today"; clicked => { root.report-change(root.report-period,2); } }
+                    Action { text: "Today"; glyph: Glyph.calendar; height: 36px; clicked => { root.report-change(root.report-period,2); } }
                 }
                 HorizontalLayout {
                     spacing: 30px;
@@ -295,6 +310,7 @@ export component MainWindow inherits Window {
             }
             if root.page == 3: ScrollView {
                 VerticalLayout {
+                alignment: start;
                 padding: 28px; spacing: 18px;
                 Heading { text: "A little focus, anywhere."; }
                 Caption { text: "Each widget shares your timer. Drag its header to move it."; }
@@ -302,12 +318,15 @@ export component MainWindow inherits Window {
                     spacing: 8px;
                     Rule {}
                     HorizontalLayout {
+                        spacing: 12px;
+                        Rectangle { width: 22px; background: transparent; Icon { glyph: i == 0 ? Glyph.timer : i == 1 ? Glyph.tasks : Glyph.mini; ink: Tokens.ink; width: 22px; height: 22px; y: (parent.height - self.height) / 2; } }
                         VerticalLayout { horizontal-stretch: 1; Text { text: widget.title; font-size: 18px; font-weight: 600; color: Tokens.ink; } Caption { text: widget.description; } }
                         CheckBox { text: "Show"; checked: widget.enabled; toggled => { root.widget-change(i,self.checked,widget.layer,widget.click-through); } }
                     }
                     HorizontalLayout {
-                        ComboBox { model: ["Bottom", "Normal", "Always on top"]; current-index: widget.layer; selected(value) => { root.widget-change(i,widget.enabled,self.current-index,widget.click-through); } }
-                        CheckBox { text: "Click through"; checked: widget.click-through; toggled => { root.widget-change(i,widget.enabled,widget.layer,self.checked); } }
+                        spacing: 12px;
+                        ComboBox { accessible-label: widget.title + " window layer"; model: ["Bottom", "Normal", "Always on top"]; current-index: widget.layer; selected(value) => { root.widget-change(i,widget.enabled,self.current-index,widget.click-through); } }
+                        CheckBox { text: "Click through"; accessible-label: "Click through " + widget.title; checked: widget.click-through; toggled => { root.widget-change(i,widget.enabled,widget.layer,self.checked); } }
                         Action { text: "Reset position"; glyph: Glyph.reset; height: 36px; clicked => { root.widget-reset(i); } }
                     }
                 }
@@ -318,6 +337,7 @@ export component MainWindow inherits Window {
             }
             if root.page == 4: ScrollView {
                 VerticalLayout {
+                    alignment: start;
                     padding: 28px; spacing: 15px;
                     Heading { text: "Find your rhythm."; }
                     Text { text: "SESSION LENGTHS"; color: Tokens.muted; font-size: 11px; }
@@ -333,9 +353,10 @@ export component MainWindow inherits Window {
                     Rule {}
                     Text { text: "SOUND & APPEARANCE"; color: Tokens.muted; font-size: 11px; }
                     HorizontalLayout {
-                        ComboBox { model: ["Soft bell", "Wood chime", "Gentle double"]; current-index <=> root.sound; }
-                        Slider { accessible-label: "Alarm volume"; value: root.volume; minimum: 0; maximum: 100; changed(value) => { root.volume = round(value); } }
-                        Caption { text: root.volume + "%"; vertical-alignment: center; }
+                        spacing: 10px;
+                        ComboBox { accessible-label: "Alarm sound"; model: ["Soft bell", "Wood chime", "Gentle double"]; current-index <=> root.sound; }
+                        Slider { accessible-label: "Alarm volume"; horizontal-stretch: 1; value: root.volume; minimum: 0; maximum: 100; changed(value) => { root.volume = round(value); } }
+                        Caption { text: root.volume + "%"; width: 36px; vertical-alignment: center; }
                         Action { text: "Preview"; glyph: Glyph.sound; height: 36px; clicked => { root.preview-sound(); } }
                     }
                     CheckBox { text: "Windows notifications"; checked <=> root.notifications; }
@@ -351,9 +372,10 @@ export component MainWindow inherits Window {
                     Action { text: "Save settings"; glyph: Glyph.save; primary: true; tint: root.accent; clicked => { root.save-settings(); } }
                     Caption { text: "Duration changes apply to your next session. Sleep always pauses elapsed time."; wrap: word-wrap; }
                     HorizontalLayout {
+                        spacing: 10px;
                         Action { text: "Notifications"; description: "Set up notifications"; glyph: Glyph.bell; height: 36px; clicked => { root.register-notifications(); } }
                         Action { text: "Data folder"; description: "Open data folder"; glyph: Glyph.folder; height: 36px; clicked => { root.open-data-folder(); } }
-                        Action { text: "Quit Orbit"; glyph: Glyph.close; height: 36px; clicked => { root.control("quit"); } }
+                        Action { text: "Quit Orbit"; glyph: Glyph.power; height: 36px; clicked => { root.control("quit"); } }
                     }
                     Caption { text: "Orbit 0.1.0 · Your data stays on this computer."; wrap: word-wrap; }
                 }
@@ -384,8 +406,9 @@ export component TimerWidget inherits Window {
             Text { text: "ORBIT / " + root.mode-label; color: Tokens.muted; font-size: 10px; vertical-alignment: center; }
             TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
         }
-        Ring { time: root.time-text; path: root.ring-path; label: root.mode-label; accent: root.accent; width: 174px; height: 174px; }
+        Rectangle { height: 174px; background: transparent; Ring { time: root.time-text; path: root.ring-path; label: root.mode-label; accent: root.accent; width: 174px; height: 174px; x: (parent.width - self.width) / 2; } }
         HorizontalLayout {
+            spacing: 6px;
             Action { text: root.running ? "Pause" : "Start"; glyph: root.running ? Glyph.pause : Glyph.play; height: 36px; clicked => { root.control("toggle"); } }
             Action { glyph: Glyph.skip; description: "Skip session"; width: 36px; height: 36px; clicked => { root.control("skip"); } }
             Action { glyph: Glyph.close; description: "Close timer widget"; width: 36px; height: 36px; clicked => { root.control("close"); } }
@@ -413,12 +436,12 @@ export component TasksWidget inherits Window {
                     HorizontalLayout {
                         padding: 5px;
                         VerticalLayout { horizontal-stretch: 1; Text { text: task.title; overflow: elide; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.ink; } Caption { color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.muted; text: task.completed + " / " + task.estimate + " sessions"; } }
-                        Action { glyph: Glyph.play; width: 36px; height: 36px; enabled: !task.done; description: "Select " + task.title; clicked => { root.select-task(task.id); } }
+                        Action { glyph: task.done || task.selected ? Glyph.check : Glyph.play; on-selection: task.selected; width: 36px; height: 36px; enabled: !task.done; description: task.done ? "Completed: " + task.title : "Select " + task.title; clicked => { root.select-task(task.id); } }
                     }
                 }
             
         }
-        HorizontalLayout { Action { text: "Open Orbit"; glyph: Glyph.orbit; height: 36px; clicked => { root.control("show"); } } Action { glyph: Glyph.close; description: "Close task widget"; width: 36px; height: 36px; clicked => { root.control("close"); } } }
+        HorizontalLayout { spacing: 8px; Action { text: "Open Orbit"; glyph: Glyph.orbit; height: 36px; clicked => { root.control("show"); } } Action { glyph: Glyph.close; description: "Close task widget"; width: 36px; height: 36px; clicked => { root.control("close"); } } }
     }
 }
 export component MiniWidget inherits Window {
@@ -433,7 +456,7 @@ export component MiniWidget inherits Window {
             VerticalLayout { Text { text: root.time-text; font-family: "Consolas"; font-size: 24px; color: Tokens.ink; } Caption { text: root.mode-label; font-size: 10px; } }
             TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
         }
-        Action { text: root.running ? "Pause" : "Start"; glyph: root.running ? Glyph.pause : Glyph.play; height: 36px; clicked => { root.control("toggle"); } }
-        Action { glyph: Glyph.close; description: "Close mini timer"; width: 36px; height: 36px; clicked => { root.control("close"); } }
+        Action { text: root.running ? "Pause" : "Start"; glyph: root.running ? Glyph.pause : Glyph.play; height: 36px; y: (parent.height - self.height) / 2; clicked => { root.control("toggle"); } }
+        Action { glyph: Glyph.close; description: "Close mini timer"; width: 36px; height: 36px; y: (parent.height - self.height) / 2; clicked => { root.control("close"); } }
     }
 }
