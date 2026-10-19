@@ -214,6 +214,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if args.iter().any(|argument| argument == "--ui-audit") {
         diagnostics::audit(app.borrow().data_dir.join("screenshots"));
     }
+    #[cfg(feature = "diagnostics")]
+    if args.iter().any(|argument| argument == "--performance-audit") {
+        diagnostics::performance(app.borrow().data_dir.join("performance.json"));
+    }
     slint::run_event_loop_until_quit()?;
     APP.with_borrow_mut(|slot| *slot = None);
     Ok(())
@@ -633,6 +637,9 @@ impl App {
             }
         }
     }
+    fn refresh_task_selection(&self) {
+        self.refresh_tasks();
+    }
     fn save_task(&mut self) {
         let title = self.main.get_task_title().to_string();
         let estimate = self.main.get_task_estimate().clamp(1, 99) as u32;
@@ -666,7 +673,7 @@ impl App {
     fn task_action(&mut self, id: i64, action: &str) {
         if action == "select" {
             self.command(Command::SelectTask(if id < 0 { None } else { Some(id) }));
-            self.refresh_tasks();
+            self.refresh_task_selection();
             return;
         }
         let Some(task) = self.tasks.iter().find(|t| t.id == id).cloned() else {

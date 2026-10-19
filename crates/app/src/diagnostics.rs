@@ -4,6 +4,61 @@ use serde_json::json;
 use std::cell::Cell;
 thread_local! { static DRIVER: slint::Timer = slint::Timer::default(); }
 
+/// Compare task-model work and real display wakeups using an isolated database.
+pub fn performance(output: PathBuf) {
+    let step = Rc::new(Cell::new(0usize));
+    let report = Rc::new(RefCell::new(json!({})));
+    DRIVER.with(|driver| driver.start(slint::TimerMode::Repeated, Duration::from_millis(3200), move || {
+        let index = step.get();
+        with_app(|app| {
+            if index == 0 {
+                app.tasks = (1..=5000).map(|id| Task {
+                    id, title: format!("Review task {id}: 日本語 notes and planning हिंदी"),
+                    estimate: 3, completed: 0, done: id % 5 == 0,
+                }).collect();
+                app.preferences[1].enabled = true;
+                app.create_widget(1);
+                app.refresh_tasks();
+                let mut samples = Vec::new();
+                let mut replacements = 0;
+                for round in 0..8 {
+                    let started = std::time::Instant::now();
+                    for selection in 0..100 {
+                        let id = 1 + ((round * 100 + selection) * 37 % 5000) as i64;
+                        app.timer.dispatch(Command::SelectTask(Some(id)), WindowsClock.now());
+                        let previous = app.main.get_tasks();
+                        app.refresh_task_selection();
+                        if round > 0 && previous != app.main.get_tasks() { replacements += 1; }
+                    }
+                    if round > 0 { samples.push(started.elapsed().as_secs_f64() * 1000.); }
+                }
+                *report.borrow_mut() = json!({"tasks":5000,"selectionsPerSample":100,"samplesMs":samples,"modelReplacements":replacements,"wakeups":{}});
+                app.command(Command::Start);
+            } else {
+                let name = ["tasks-page", "timer-page", "mini-visible", "tasks-widget-only"][index - 1];
+                report.borrow_mut()["wakeups"][name] = json!(app.diagnostic_ticks);
+            }
+            if index == 4 {
+                std::fs::write(&output, serde_json::to_vec_pretty(&*report.borrow()).unwrap()).unwrap();
+                DRIVER.with(slint::Timer::stop);
+                app.quit();
+                return;
+            }
+            for i in 0..3 { app.preferences[i].enabled = false; app.destroy_widget(i); }
+            app.main.set_page(if index == 1 { 0 } else { 1 });
+            if index >= 2 {
+                let widget = if index == 2 { 2 } else { 1 };
+                app.preferences[widget].enabled = true;
+                app.create_widget(widget);
+            }
+            app.render();
+            app.reschedule();
+            app.diagnostic_ticks = 0;
+        });
+        step.set(index + 1);
+    }));
+}
+
 /// Capture actual software-rendered windows at two layouts and in high contrast.
 /// Diagnostic-only code and PNG support are absent from ordinary release builds.
 pub fn audit(output: PathBuf) {
