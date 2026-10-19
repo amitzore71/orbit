@@ -7,3 +7,12 @@
 *.db-wal
 __pycache__/
 *.pyc
+
+# Local environment configuration and signing credentials
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key

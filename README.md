@@ -27,7 +27,8 @@ State is saved on transitions, not on each display tick. A normal exit saves the
 Install the stable Rust MSVC toolchain and Visual Studio C++ Build Tools with the Windows SDK. Tested with Rust 1.98.1. `Cargo.lock` is included for repeatable dependency resolution. First build requires crates.io access; subsequent locked builds can use the local Cargo cache.
 
 ```powershell
-cd D:\Ray\RSCERT_XXX\pomodoro
+git clone https://github.com/amitzore71/orbit.git
+cd orbit
 cargo test --workspace --locked
 cargo build --release --locked
 .\target\release\orbit.exe
