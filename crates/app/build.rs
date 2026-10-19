@@ -8,7 +8,7 @@ fn main() {
         winresource::WindowsResource::new()
             .set_icon("assets/orbit.ico")
             .set("ProductName", "Orbit")
-            .set("FileDescription", "Orbit · A little more present")
+            .set("FileDescription", "Orbit · Focus timer")
             .set("LegalCopyright", "Copyright © 2026 Orbit contributors")
             .set_manifest_file("assets/app.manifest")
             .compile()

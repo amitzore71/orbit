@@ -109,8 +109,8 @@ export component MainWindow inherits Window {
     in property <string> time-text: "25:00";
     in property <string> ring-path;
     in property <string> mode-label: "Focus";
-    in property <string> state-label: "Ready when you are";
-    in property <string> active-task: "Choose one thing to focus on.";
+    in property <string> state-label: "Ready";
+    in property <string> active-task: "No task selected";
     in property <int> mode: 0;
     in property <bool> running: false;
     in property <bool> mica-active: false;
@@ -165,14 +165,11 @@ export component MainWindow inherits Window {
             VerticalLayout {
                 padding: 18px; spacing: 10px;
                 HorizontalLayout { spacing: 8px; height: 46px; Icon { glyph: Glyph.orbit; ink: Tokens.high-contrast ? Tokens.ink : Tokens.coral; width: 27px; height: 27px; y: (parent.height - self.height) / 2; } Text { text: "Orbit"; font-size: 29px; font-weight: 700; color: Tokens.ink; vertical-alignment: center; } }
-                Caption { text: "A LITTLE MORE PRESENT"; font-size: 10px; height: 32px; }
                 for name[i] in ["Timer", "Tasks", "Reports", "Widgets", "Settings", "About"]: Action {
                     text: name; glyph: i == 0 ? Glyph.timer : i == 1 ? Glyph.tasks : i == 2 ? Glyph.reports : i == 3 ? Glyph.widgets : i == 4 ? Glyph.settings : Glyph.info; left-aligned: true; quiet: true; primary: root.page == i; checkable: true; checked: root.page == i; tint: Tokens.ink;
                     clicked => { root.page = i; root.navigate(i); }
                 }
                 Rectangle { vertical-stretch: 1; background: transparent; }
-                Caption { text: "One thing at a time."; }
-                Caption { text: "Local. Quiet. Yours."; font-size: 11px; }
                 Action { text: "Hide to tray"; glyph: Glyph.hide; quiet: true; left-aligned: true; clicked => { root.control("hide"); } }
             }
         }
@@ -200,7 +197,7 @@ export component MainWindow inherits Window {
             if root.page == 0: VerticalLayout {
                 padding-left: root.compact ? 24px : 38px; padding-right: root.compact ? 24px : 38px; padding-bottom: root.compact ? 16px : 25px; spacing: root.compact ? 8px : 14px;
                 HorizontalLayout {
-                    Heading { text: root.mode == 0 ? "Make room for focus." : "Take a little space."; horizontal-stretch: 1; }
+                    Heading { text: root.mode-label; horizontal-stretch: 1; }
                     Caption { text: "SESSION " + (root.cycle + 1); vertical-alignment: center; }
                 }
                 HorizontalLayout {
@@ -216,7 +213,6 @@ export component MainWindow inherits Window {
                         time: root.time-text; path: root.ring-path; label: root.state-label; accent: root.accent; }
                 }
                 Text { text: root.active-task; font-size: 17px; font-weight: 600; color: Tokens.ink; horizontal-alignment: center; overflow: elide; }
-                Caption { text: root.mode == 0 ? "A small commitment. Your full attention." : "Rest is part of the work."; horizontal-alignment: center; }
                 HorizontalLayout {
                     spacing: 10px;
                     Action { text: "Reset"; glyph: Glyph.reset; clicked => { root.control("reset"); } }
@@ -231,7 +227,7 @@ export component MainWindow inherits Window {
             }
             if root.page == 1: VerticalLayout {
                 padding: 28px; spacing: 15px;
-                Heading { text: "Give your attention a home."; }
+                Heading { text: "Tasks"; }
                 Caption { text: "Select a task for your next session. The current session keeps its task."; }
                 HorizontalLayout {
                     spacing: 10px;
@@ -243,7 +239,7 @@ export component MainWindow inherits Window {
                 Rule {}
                 if root.tasks.length == 0: VerticalLayout {
                     alignment: center; spacing: 12px;
-                    Text { text: "Start with one thing."; font-size: 23px; color: Tokens.ink; }
+                    Text { text: "No tasks yet"; font-size: 23px; color: Tokens.ink; }
                     Caption { text: "Add a task above and estimate how many focus sessions it needs."; wrap: word-wrap; }
                 }
                 ListView {
@@ -256,7 +252,7 @@ export component MainWindow inherits Window {
                                 VerticalLayout {
                                     spacing: 3px; horizontal-stretch: 1; alignment: center;
                                     Text { text: task.title; vertical-stretch: 0; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : task.done ? Tokens.muted : Tokens.ink; font-weight: 600; overflow: elide; }
-                                    Caption { vertical-stretch: 0; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.muted; text: task.completed + " / " + task.estimate + " pomodoros"; }
+                                    Caption { vertical-stretch: 0; color: task.selected && Tokens.high-contrast ? Tokens.system-highlight-text : Tokens.muted; text: task.completed + " / " + task.estimate + " sessions"; }
                                 }
                                 VerticalLayout {
                                     horizontal-stretch: 0; alignment: center;
@@ -277,7 +273,7 @@ export component MainWindow inherits Window {
                 VerticalLayout {
                 alignment: start;
                 padding: 28px; spacing: 20px;
-                Heading { text: "Small sessions add up."; }
+                Heading { text: "Reports"; }
                 HorizontalLayout {
                     spacing: 8px;
                     ComboBox { accessible-label: "Report period"; model: ["Daily", "Weekly", "Monthly"]; current-index <=> root.report-period; selected(value) => { root.report-change(self.current-index,0); } }
@@ -304,7 +300,7 @@ export component MainWindow inherits Window {
                     }
                 }
                 Caption { text: root.report-partial + " from partial or in-progress sessions. Pauses and sleep are excluded."; wrap: word-wrap; }
-                Caption { text: "Reports refresh on session changes and when opened. Calendar uses your Windows time zone."; wrap: word-wrap; }
+                Caption { text: "Dates use your Windows time zone."; wrap: word-wrap; }
             
                 }
             }
@@ -312,7 +308,7 @@ export component MainWindow inherits Window {
                 VerticalLayout {
                 alignment: start;
                 padding: 28px; spacing: 18px;
-                Heading { text: "A little focus, anywhere."; }
+                Heading { text: "Desktop widgets"; }
                 Caption { text: "Each widget shares your timer. Drag its header to move it."; }
                 for widget[i] in root.widgets: VerticalLayout {
                     spacing: 8px;
@@ -331,7 +327,7 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                Caption { text: "Locked out? Right-click the tray icon and choose Unlock all widgets."; wrap: word-wrap; }
+                Caption { text: "To restore widget controls, choose Unlock all widgets from the tray."; wrap: word-wrap; }
             
                 }
             }
@@ -339,7 +335,7 @@ export component MainWindow inherits Window {
                 VerticalLayout {
                     alignment: start;
                     padding: 28px; spacing: 15px;
-                    Heading { text: "Find your rhythm."; }
+                    Heading { text: "Settings"; }
                     Text { text: "SESSION LENGTHS"; color: Tokens.muted; font-size: 11px; }
                     HorizontalLayout {
                         spacing: 14px;
@@ -383,8 +379,8 @@ export component MainWindow inherits Window {
             if root.page == 5: VerticalLayout {
                 padding: 38px; spacing: 20px; alignment: start;
                 Heading { text: "Orbit"; }
-                Text { text: "A little more present."; font-size: 22px; color: Tokens.ink; }
-                Caption { text: "Version 0.1.0 · Windows 11 · Local and offline"; }
+                Text { text: "Offline focus timer for Windows"; font-size: 22px; color: Tokens.ink; }
+                Caption { text: "Version 0.1.0"; }
                 Rule {}
                 Caption { text: "Application source is licensed under MIT. Third-party licenses are included with the download."; wrap: word-wrap; }
                 Rectangle { vertical-stretch: 1; background: transparent; }
@@ -424,7 +420,7 @@ export component TasksWidget inherits Window {
     VerticalLayout {
         padding: 16px; spacing: 12px;
         Rectangle { height: 38px; background: transparent;
-            VerticalLayout { Text { text: "Today, one thing at a time."; color: Tokens.ink; font-size: 16px; font-weight: 600; } Caption { text: root.today-label; } }
+            VerticalLayout { Text { text: "Today's tasks"; color: Tokens.ink; font-size: 16px; font-weight: 600; } Caption { text: root.today-label; } }
             TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
         }
         Rule {}

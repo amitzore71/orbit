@@ -1,5 +1,5 @@
 // Original 24-unit outline icons. Native paths: no fonts, raster files, or runtime library.
-export enum Glyph { none, orbit, timer, tasks, reports, widgets, settings, info, play, pause, skip, reset, add, edit, trash, close, minimize, previous, next, hide, folder, bell, sound, save, coffee, moon, check, calendar, power, mini, keyboard }
+export enum Glyph { none, orbit, timer, tasks, reports, widgets, settings, info, play, pause, skip, reset, add, edit, trash, close, minimize, previous, next, hide, folder, bell, sound, save, coffee, moon, check, calendar, power, mini }
 
 export component Icon inherits Path {
     in property <Glyph> glyph: Glyph.none;
@@ -40,6 +40,5 @@ export component Icon inherits Path {
         glyph == Glyph.check ? "M4 12L9 17L20 6" :
         glyph == Glyph.calendar ? "M4 5H20V21H4Z M8 3V7 M16 3V7 M4 10H20 M8 14H10 M14 14H16 M8 18H10" :
         glyph == Glyph.power ? "M12 3V12 M7 5A9 9 0 1 0 17 5" :
-        glyph == Glyph.mini ? "M3 5H21V19H3Z M7 10H12 M7 14H10 M16 10V14" :
-        glyph == Glyph.keyboard ? "M3 6H21V18H3Z M7 10H7.1 M11 10H11.1 M15 10H15.1 M18 10H18.1 M7 14H7.1 M10 14H17" : "";
+        glyph == Glyph.mini ? "M3 5H21V19H3Z M7 10H12 M7 14H10 M16 10V14" : "";
 }

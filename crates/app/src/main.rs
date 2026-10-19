@@ -310,10 +310,8 @@ impl App {
                     a.message(
                         "Notifications are registered for this executable. A test alert was sent.",
                     );
-                    a.platform.notify(
-                        "Orbit is ready",
-                        "Your next session can have a quieter ending.",
-                    );
+                    a.platform
+                        .notify("Orbit notifications", "This is a test alert.");
                 }
                 Err(e) => a.message(&e),
             })
@@ -440,10 +438,7 @@ impl App {
             if self.timer.settings.notifications {
                 self.platform.notify(
                     title,
-                    &format!(
-                        "{} is ready when you are.",
-                        self.timer.snapshot(now).mode.label()
-                    ),
+                    &format!("Next session: {}.", self.timer.snapshot(now).mode.label()),
                 );
             }
         }
@@ -485,11 +480,11 @@ impl App {
             self.main.set_cycle(snapshot.cycle as i32);
             self.main.set_state_label(
                 if snapshot.running {
-                    "In your own rhythm"
+                    "Running"
                 } else if snapshot.started {
-                    "A moment to pause"
+                    "Paused"
                 } else {
-                    "Ready when you are"
+                    "Ready"
                 }
                 .into(),
             );
@@ -497,7 +492,7 @@ impl App {
                 .task
                 .and_then(|id| self.tasks.iter().find(|t| t.id == id))
                 .map(|t| t.title.as_str())
-                .unwrap_or("Choose one thing to focus on.");
+                .unwrap_or("No task selected");
             self.main.set_active_task(task.into());
         }
         let accent = match snapshot.mode {
@@ -1013,9 +1008,9 @@ impl App {
     }
     fn refresh_widget_rows(&self) {
         let titles = [
-            ("Timer ring", "Your session, with a little breathing room."),
-            ("Today's tasks", "A short list and your daily progress."),
-            ("Mini timer", "A small timer that fits beside your work."),
+            ("Timer ring", "Countdown and session controls."),
+            ("Today's tasks", "Active tasks and today's focus totals."),
+            ("Mini timer", "Compact countdown with start and pause."),
         ];
         self.main.set_widgets(ModelRc::new(VecModel::from(
             self.preferences

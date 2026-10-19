@@ -481,7 +481,7 @@ fn tray_data(hwnd: HWND, icon: HICON) -> NOTIFYICONDATAW {
 unsafe fn add_tray(hwnd: HWND, icon: HICON) {
     unsafe {
         let mut data = tray_data(hwnd, icon);
-        wide_into("Orbit · One thing at a time", &mut data.szTip);
+        wide_into("Orbit · Focus timer", &mut data.szTip);
         if !Shell_NotifyIconW(NIM_ADD, &data).as_bool() {
             emit(Event::Error(
                 "Could not create the tray icon. Keep the main window open.".into(),
