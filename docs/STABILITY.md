@@ -2,6 +2,8 @@
 
 The audit found and fixed boundedness, native lifetime, and unnecessary-work problems. No heap/handle errors or continuing widget resource growth were detected in the exercised paths after these changes. This is a finite stress test, not a guarantee that every possible leak or invalid access is absent.
 
+Follow-up window-drag fix: the posted native caption message described below bypassed Winit's drag state and matching mouse release, allowing Slint's title-bar TouchArea to retain pointer capture. The current UI uses WindowMoveArea on the main window and all widgets, and removes the custom native/Rust drag callbacks. Physical-input comparison reproduced blocked navigation in the old build; the fixed build allowed Reports/Timer navigation and timer start after three header drag gestures, plus mini-widget pause after dragging its surface. This targeted check does not replace the broader desktop scenarios in VALIDATION.md.
+
 | Finding | Fix and regression evidence |
 |---|---|
 | Persistent SQLite errors accumulated an unlimited retry deque. | Bound pending operations to 130 and the worker channel to 128; validate payloads before enqueueing. A write failure closes the write gate, pauses the timer, and preserves one final paused checkpoint. Timer commands restore their previous state if submission is rejected. A later control retries saving. Tests cover 20,000 failed writes, 10,000 gated submissions, exact-once recovery of accepted tasks, and a real process with an injected SQLite failure. |

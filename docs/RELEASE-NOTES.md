@@ -6,6 +6,8 @@ Software rendering is the default, with a DPI-aware Windows manifest and a stati
 
 Task analytics show focus time, share of total focus, and completed sessions for each task in daily, weekly, and monthly reports. Partial sessions, deleted tasks, and unassigned time retain their history. Report titles are resolved once per task, the tasks widget uses a lightweight daily summary, and startup defers analytics until Reports is opened.
 
+Window movement uses Slint's native WindowMoveArea for the main window and all widgets. This fixes controls becoming unclickable after a drag consumed the mouse-release event.
+
 No accounts, cloud sync, ambient sounds, streaks, heatmaps, focus-lock, automatic updater, or WorkerW desktop attachment are included. Release binaries are unsigned unless a distributor signs them separately.
 
 Memory and reliability audit: bounded storage/native queues and alarm/toast concurrency; atomic task mutation snapshots; deterministic native-thread shutdown; safe native drag dispatch; virtualized task rows; minimized display-timer suspension; coalesced reports and schema-v2 report index/join. Schema v1 databases migrate automatically. See STABILITY.md for the measured stress and heap/handle validation results.

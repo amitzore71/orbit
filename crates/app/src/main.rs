@@ -295,13 +295,6 @@ impl App {
         });
         self.main
             .on_widget_reset(|index| with_app(|a| a.reset_widget(index as usize)));
-        self.main.on_drag_window(|| {
-            with_app(|a| {
-                if let Some(h) = window_handle(a.main.window()) {
-                    platform_win::drag_window(h);
-                }
-            })
-        });
         self.main.on_register_notifications(|| {
             let result = platform_win::register_notifications();
             with_app(|a| match result {
@@ -893,28 +886,16 @@ impl App {
                 }
             })
         };
-        let drag = move || {
-            with_app(|a| {
-                if let Some(w) = &a.widgets[index]
-                    && let Some(h) = window_handle(w.window())
-                {
-                    platform_win::drag_window(h);
-                }
-            })
-        };
         match &widget {
             Widget::Timer(w) => {
                 w.on_control(control);
-                w.on_drag_window(drag);
             }
             Widget::Tasks(w) => {
                 w.on_control(control);
-                w.on_drag_window(drag);
                 w.on_select_task(|id| with_app(|a| a.task_action(i64::from(id), "select")));
             }
             Widget::Mini(w) => {
                 w.on_control(control);
-                w.on_drag_window(drag);
             }
         }
         widget.window().on_close_requested(move || {

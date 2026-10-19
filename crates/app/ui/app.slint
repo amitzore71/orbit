@@ -155,7 +155,6 @@ export component MainWindow inherits Window {
     callback report-change(int,int);
     callback widget-change(int,bool,int,bool);
     callback widget-reset(int);
-    callback drag-window();
     callback register-notifications();
     callback open-data-folder();
     callback navigate(int);
@@ -179,7 +178,7 @@ export component MainWindow inherits Window {
             spacing: 0px;
             Rectangle {
                 height: 45px; background: transparent;
-                TouchArea { mouse-cursor: move; pointer-event(event) => { if (event.kind == PointerEventKind.down) { root.drag-window(); } } }
+                WindowMoveArea {}
                 HorizontalLayout {
                     padding-left: 28px; padding-right: 12px; spacing: 8px;
                     Caption { text: "ORBIT / FOCUS TIMER"; font-size: 11px; vertical-alignment: center; horizontal-stretch: 1; }
@@ -429,12 +428,12 @@ export component TimerWidget inherits Window {
     no-frame: true; background: Tokens.paper; default-font-family: "Segoe UI";
     in property <string> time-text; in property <string> ring-path; in property <string> mode-label;
     in property <color> accent: Tokens.coral; in property <bool> running;
-    callback control(string); callback drag-window();
+    callback control(string);
     VerticalLayout {
         padding: 15px; spacing: 10px;
         Rectangle { height: 24px; background: transparent;
             Text { text: "ORBIT / " + root.mode-label; color: Tokens.muted; font-size: 10px; vertical-alignment: center; }
-            TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
+            WindowMoveArea {}
         }
         Rectangle { height: 174px; background: transparent; Ring { time: root.time-text; path: root.ring-path; label: root.mode-label; accent: root.accent; width: 174px; height: 174px; x: (parent.width - self.width) / 2; } }
         HorizontalLayout {
@@ -450,12 +449,12 @@ export component TasksWidget inherits Window {
     title: "Orbit · Today widget"; width: 320px; height: 330px;
     no-frame: true; background: Tokens.paper; default-font-family: "Segoe UI";
     in property <[TaskRow]> tasks; in property <string> today-label: "Today's focus";
-    callback control(string); callback select-task(int); callback drag-window();
+    callback control(string); callback select-task(int);
     VerticalLayout {
         padding: 16px; spacing: 12px;
         Rectangle { height: 38px; background: transparent;
             VerticalLayout { Text { text: "Today's tasks"; color: Tokens.ink; font-size: 16px; font-weight: 600; } Caption { text: root.today-label; } }
-            TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
+            WindowMoveArea {}
         }
         Rule {}
         if root.tasks.length == 0: Caption { text: "Add your first task in Orbit."; }
@@ -479,12 +478,12 @@ export component MiniWidget inherits Window {
     title: "Orbit · Mini timer"; width: 320px; height: 78px;
     no-frame: true; background: Tokens.paper; default-font-family: "Segoe UI";
     in property <string> time-text; in property <string> mode-label; in property <bool> running;
-    callback control(string); callback drag-window();
+    callback control(string);
     HorizontalLayout {
         padding: 10px; spacing: 8px;
         Rectangle { horizontal-stretch: 1; background: transparent;
             VerticalLayout { Text { text: root.time-text; font-family: "Consolas"; font-size: 24px; color: Tokens.ink; } Caption { text: root.mode-label; font-size: 10px; } }
-            TouchArea { mouse-cursor: move; pointer-event(e) => { if(e.kind == PointerEventKind.down) { root.drag-window(); } } }
+            WindowMoveArea {}
         }
         Action { text: root.running ? "Pause" : "Start"; glyph: root.running ? Glyph.pause : Glyph.play; height: 36px; y: (parent.height - self.height) / 2; clicked => { root.control("toggle"); } }
         Action { glyph: Glyph.close; description: "Close mini timer"; width: 36px; height: 36px; y: (parent.height - self.height) / 2; clicked => { root.control("close"); } }

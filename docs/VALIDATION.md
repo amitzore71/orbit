@@ -32,6 +32,7 @@ Integration scripts use isolated databases to check real expiry, paused restart 
 Use a separate data directory and check:
 
 - Start, pause, reset, skip, mode changes, and keyboard activation. Add, edit, select, complete, and delete a Unicode task; navigate reports and save settings.
+- Drag the main window and each widget repeatedly, release the mouse over a control and outside the window, then verify navigation, start/pause, and task selection still respond. A header click without movement and a right-click must not enter a window move. WindowMoveArea routes moves through Slint/Winit so the matching release reaches the UI.
 - Widget movement, close/reopen, saved placement, layering, click-through, and tray recovery. Test conflicting shortcuts, notification activation, and muted or unavailable audio.
 - Actual Windows high contrast and reduced motion; sleep/hibernate and resume; Explorer restart; mixed-DPI monitors, monitor removal, and time-zone/DST changes.
 - A clean Windows 11 22H2 machine and the complete install/uninstall flow, including upgrades and retained user data.

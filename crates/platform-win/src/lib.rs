@@ -856,20 +856,6 @@ unsafe fn rounded(hwnd: HWND) {
         );
     }
 }
-pub fn drag_window(hwnd: isize) {
-    unsafe {
-        let hwnd = HWND(hwnd as *mut c_void);
-        let _ = ReleaseCapture();
-        // Dispatch after the Slint callback releases App's RefMut. Moving a window runs
-        // a nested native message loop, which may deliver timer callbacks.
-        let _ = PostMessageW(
-            Some(hwnd),
-            WM_NCLBUTTONDOWN,
-            WPARAM(HTCAPTION as usize),
-            LPARAM(0),
-        );
-    }
-}
 pub fn foreground(hwnd: isize) {
     unsafe {
         let hwnd = HWND(hwnd as *mut c_void);
