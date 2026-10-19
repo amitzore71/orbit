@@ -50,7 +50,11 @@ Use `-SkipInstaller` for just the portable ZIP. Outputs are in `dist`. Python 3 
 
 ## Performance and verification
 
-See [the performance report](docs/PERFORMANCE.md) and [validation notes](docs/VALIDATION.md). See [the memory and stability audit](docs/STABILITY.md) for leak checks, fault injection, native resource stress, and report-query benchmarks. To repeat the six footprint scenarios:
+See [the performance report](docs/PERFORMANCE.md) and [validation notes](docs/VALIDATION.md). See [the memory and stability audit](docs/STABILITY.md) for leak checks, fault injection, native resource stress, and report-query benchmarks.
+
+The latest [task-selection and display-scheduling optimization](docs/UI-OPTIMIZATION.md) documents model reuse, reduced display wakeups, and measured before/after results.
+
+To repeat the six footprint scenarios:
 
 ```powershell
 .\scripts\Measure-Footprint.ps1 -WarmupSeconds 10 -SampleSeconds 60

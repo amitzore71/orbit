@@ -1,0 +1,51 @@
+{
+  "buildProfile": "debug",
+  "tasks": 5000,
+  "selectionsPerSample": 100,
+  "measuredScope": "Task-model updates only; repaint and persistence are outside timed samples",
+  "before": {
+    "modelReplacements": 700,
+    "samplesMs": [
+      1410.4463,
+      1442.7752,
+      1486.7387,
+      1425.0955000000001,
+      1545.5747,
+      1498.4618,
+      1481.7362
+    ],
+    "selectionsPerSample": 100,
+    "tasks": 5000,
+    "wakeups": {
+      "mini-visible": 3,
+      "tasks-widget-only": 4,
+      "timer-page": 3
+    },
+    "discardedWarmupTicks": 0,
+    "medianMsPer100Selections": 1481.7362,
+    "executableSha256": "dd67e5145d5843e56f501dab9beed9bf4de07455f8fcdc2e4813b01cfe980ce8"
+  },
+  "after": {
+    "modelReplacements": 0,
+    "samplesMs": [
+      0.186,
+      0.23049999999999998,
+      0.2556,
+      0.2615,
+      0.3103,
+      0.4177,
+      0.3695
+    ],
+    "selectionsPerSample": 100,
+    "tasks": 5000,
+    "wakeups": {
+      "mini-visible": 3,
+      "tasks-widget-only": 0,
+      "timer-page": 3
+    },
+    "discardedWarmupTicks": 0,
+    "medianMsPer100Selections": 0.2615,
+    "executableSha256": "d69a224b2a96ef2c61e614ffd8a8abb66441246216af23bcf9c89df539b84b59"
+  },
+  "taskModelSpeedup": 5666.295219885277
+}

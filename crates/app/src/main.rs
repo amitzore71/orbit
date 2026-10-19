@@ -8,6 +8,7 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
 slint::include_modules!();
 #[cfg(feature = "diagnostics")]
 mod diagnostics;
+mod task_models;
 
 thread_local! {static APP:RefCell<Option<Rc<RefCell<App>>>>=const{RefCell::new(None)};}
 fn with_app(action: impl FnOnce(&mut App)) {
@@ -56,6 +57,7 @@ struct App {
     storage: Worker,
     platform: Platform,
     tasks: Vec<Task>,
+    task_models: task_models::TaskModels,
     preferences: [WidgetPreferences; 3],
     widgets: [Option<Widget>; 3],
     display_timer: slint::Timer,
@@ -141,6 +143,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         storage,
         platform,
         tasks: loaded.tasks,
+        task_models: task_models::TaskModels::default(),
         preferences,
         widgets: Default::default(),
         display_timer: Default::default(),
@@ -215,7 +218,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         diagnostics::audit(app.borrow().data_dir.join("screenshots"));
     }
     #[cfg(feature = "diagnostics")]
-    if args.iter().any(|argument| argument == "--performance-audit") {
+    if args
+        .iter()
+        .any(|argument| argument == "--performance-audit")
+    {
         diagnostics::performance(app.borrow().data_dir.join("performance.json"));
     }
     slint::run_event_loop_until_quit()?;
@@ -321,12 +327,16 @@ impl App {
         });
         self.main.on_navigate(|page| {
             with_app(|a| {
-                if page == 2 {
-                    a.command(Command::Checkpoint);
-                }
                 if page == 4 {
                     a.load_settings();
                 }
+                // Returning to the timer must refresh its value and restart display
+                // updates even after a page without a timer suspended those updates.
+                a.command(if page == 2 {
+                    Command::Checkpoint
+                } else {
+                    Command::Tick
+                });
             })
         });
         self.main.window().on_close_requested(|| {
@@ -442,14 +452,35 @@ impl App {
     }
     fn render(&self) {
         self.sync_layout();
+        let main_visible = surface_visible(self.main.window());
+        let main_timer = main_visible && self.main.get_page() == 0;
+        let ring_widget =
+            self.widgets.iter().flatten().any(|widget| {
+                matches!(widget, Widget::Timer(_)) && surface_visible(widget.window())
+            });
+        let mini_widget =
+            self.widgets.iter().flatten().any(|widget| {
+                matches!(widget, Widget::Mini(_)) && surface_visible(widget.window())
+            });
         let snapshot = self.timer.snapshot(WindowsClock.now());
-        let label = snapshot.time_label();
-        let path = ring_path(1.0 - snapshot.progress());
-        if surface_visible(self.main.window()) {
-            self.main.set_time_text(label.clone().into());
-            self.main.set_ring_path(path.clone().into());
+        if main_visible {
+            // Other pages also use the current mode's accent after a session ends.
             self.main.set_mode(snapshot.mode.index());
-            self.main.set_mode_label(snapshot.mode.label().into());
+        }
+        if !main_timer && !ring_widget && !mini_widget {
+            return;
+        }
+        let label: SharedString = snapshot.time_label().into();
+        let mode_label: SharedString = snapshot.mode.label().into();
+        let path: SharedString = if main_timer || ring_widget {
+            ring_path(1.0 - snapshot.progress()).into()
+        } else {
+            SharedString::default()
+        };
+        if main_timer {
+            self.main.set_time_text(label.clone());
+            self.main.set_ring_path(path.clone());
+            self.main.set_mode_label(mode_label.clone());
             self.main.set_running(snapshot.running);
             self.main.set_cycle(snapshot.cycle as i32);
             self.main.set_state_label(
@@ -480,15 +511,15 @@ impl App {
             }
             match widget {
                 Widget::Timer(w) => {
-                    w.set_time_text(label.clone().into());
-                    w.set_ring_path(path.clone().into());
-                    w.set_mode_label(snapshot.mode.label().into());
+                    w.set_time_text(label.clone());
+                    w.set_ring_path(path.clone());
+                    w.set_mode_label(mode_label.clone());
                     w.set_running(snapshot.running);
                     w.set_accent(accent);
                 }
                 Widget::Mini(w) => {
-                    w.set_time_text(label.clone().into());
-                    w.set_mode_label(snapshot.mode.label().into());
+                    w.set_time_text(label.clone());
+                    w.set_mode_label(mode_label.clone());
                     w.set_running(snapshot.running);
                 }
                 Widget::Tasks(_) => {}
@@ -502,7 +533,7 @@ impl App {
         if !snapshot.running || self.quitting {
             return;
         }
-        let visible = surface_visible(self.main.window())
+        let visible = (surface_visible(self.main.window()) && self.main.get_page() == 0)
             || self
                 .widgets
                 .iter()
@@ -615,30 +646,17 @@ impl App {
     }
     fn refresh_tasks(&self) {
         let selected = self.timer.checkpoint(WindowsClock.now()).selected_task;
-        let rows: Vec<TaskRow> = self
-            .tasks
-            .iter()
-            .map(|t| TaskRow {
-                id: t.id as i32,
-                title: t.title.clone().into(),
-                estimate: t.estimate as i32,
-                completed: t.completed as i32,
-                done: t.done,
-                selected: selected == Some(t.id),
-            })
-            .collect();
-        self.main
-            .set_tasks(ModelRc::new(VecModel::from(rows.clone())));
+        self.task_models.rebuild(&self.tasks, selected);
+        self.main.set_tasks(self.task_models.all.clone().into());
         for widget in self.widgets.iter().flatten() {
             if let Widget::Tasks(w) = widget {
-                w.set_tasks(ModelRc::new(VecModel::from(
-                    rows.iter().filter(|r| !r.done).cloned().collect::<Vec<_>>(),
-                )));
+                w.set_tasks(self.task_models.active.clone().into());
             }
         }
     }
     fn refresh_task_selection(&self) {
-        self.refresh_tasks();
+        self.task_models
+            .select(self.timer.checkpoint(WindowsClock.now()).selected_task);
     }
     fn save_task(&mut self) {
         let title = self.main.get_task_title().to_string();
@@ -905,7 +923,9 @@ impl App {
         self.widget_attached[index] = false;
         self.apply_appearance();
         self.position_widget(index);
-        self.refresh_tasks();
+        if let Some(Widget::Tasks(widget)) = &self.widgets[index] {
+            widget.set_tasks(self.task_models.active.clone().into());
+        }
         self.render();
         self.request_today();
         slint::Timer::single_shot(Duration::from_millis(60), || {
