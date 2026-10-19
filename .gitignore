@@ -8,6 +8,15 @@
 __pycache__/
 *.pyc
 
+# Temporary files and local logs
+/tmp/
+/temp/
+*.tmp
+*.temp
+*.log
+*.bak
+*.orig
+
 # Local environment configuration and signing credentials
 .env
 .env.*

@@ -24,4 +24,4 @@ cargo build --features diagnostics --locked --offline
 python scripts/ui-audit.py
 ```
 
-Each audit creates a new `artifacts/ui-audit-<timestamp>` folder, including per-scale PNGs and JSON manifests. The final review run is `artifacts/ui-audit-1792398037302915100`. A local diagnostic preview executable is available at `artifacts/orbit-ui-preview.exe`; existing ZIP and installer artifacts were not rebuilt.
+Each audit creates a new `artifacts/ui-audit-<timestamp>` folder, including per-scale PNGs and JSON manifests. These generated files are ignored by Git and can be removed after review. The local captures, preview executable, build cache, and old packages from this review were cleaned up; rerun the commands above to regenerate captures and a diagnostic build. ZIP and installer packages require the separate release build script.
