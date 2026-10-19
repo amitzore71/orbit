@@ -50,4 +50,4 @@ python scripts/integration-failure-check.py dist/Orbit-0.1.0-windows-x64/orbit.e
 python scripts/branding-check.py dist/Orbit-0.1.0-windows-x64/orbit.exe
 ```
 
-Verify that the ZIP and installer contain the same executable and dependency notices, PE imports have no Visual C++ runtime DLL dependency, and uninstall retains user data. Build metadata identifies the last packaged executable, not necessarily the current source. Resolve the Slint attribution requirement described in the [README](../README.md#licenses) before distribution. Sign only with a valid signing certificate.
+Verify that the ZIP and installer contain the same executable and dependency notices, PE imports have no Visual C++ runtime DLL dependency, uninstall retains user data, and the About page displays the AboutSlint widget. Build metadata identifies the last packaged executable, not necessarily the current source. Sign only with a valid signing certificate.

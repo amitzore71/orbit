@@ -1,4 +1,4 @@
-import { Palette, LineEdit, SpinBox, CheckBox, ComboBox, Slider, ScrollView, ListView } from "std-widgets.slint";
+import { Palette, LineEdit, SpinBox, CheckBox, ComboBox, Slider, ScrollView, ListView, AboutSlint } from "std-widgets.slint";
 import { Icon, Glyph } from "icons.slint";
 
 export struct TaskRow { id: int, title: string, estimate: int, completed: int, done: bool, selected: bool }
@@ -413,6 +413,10 @@ export component MainWindow inherits Window {
                 Caption { text: "Version 0.1.0"; }
                 Rule {}
                 Caption { text: "Application source is licensed under MIT. Third-party licenses are included with the download."; wrap: word-wrap; }
+                Rectangle {
+                    height: 112px; background: transparent;
+                    AboutSlint { width: 280px; height: 112px; }
+                }
                 Rectangle { vertical-stretch: 1; background: transparent; }
             }
         }

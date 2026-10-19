@@ -32,11 +32,18 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Release executable exceeds 10 MB.' }
     python scripts\write-build-info.py --exe $stagedExecutable --compression upx
     if ($LASTEXITCODE -ne 0) { throw 'Build metadata failed.' }
+    python scripts\branding-check.py $stagedExecutable
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged executable startup or legacy-data check failed.' }
+    python scripts\integration-check.py $stagedExecutable
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged executable timer integration check failed.' }
+    python scripts\integration-failure-check.py $stagedExecutable
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged executable recovery check failed.' }
     Copy-Item -LiteralPath 'README.md','LICENSE' -Destination $stagingRoot
     $stagingDocs = Join-Path $stagingRoot 'docs'
     New-Item -ItemType Directory -Path $stagingDocs -Force | Out-Null
     Copy-Item -LiteralPath 'docs\PERFORMANCE.md','docs\RELEASE-NOTES.md','docs\VALIDATION.md','docs\STABILITY.md','docs\stability-results.json','docs\ui-optimization.json' -Destination $stagingDocs
     Copy-Item -LiteralPath 'docs\build-info.json' -Destination $stagingDocs
+    Copy-Item -LiteralPath 'artifacts\integration-check.json','artifacts\integration-failure-check.json' -Destination $stagingDocs
     if (Test-Path -LiteralPath 'docs\branding-validation.json') { Copy-Item -LiteralPath 'docs\branding-validation.json' -Destination $stagingDocs }
     if (Test-Path -LiteralPath 'docs\footprint.json') { Copy-Item -LiteralPath 'docs\footprint.json' -Destination $stagingDocs }
     python scripts\license-notices.py (Join-Path $stagingRoot 'THIRD-PARTY-NOTICES.txt')
@@ -59,6 +66,13 @@ try {
     if ($SkipInstaller) { $verificationArgs += '--skip-installer' }
     python @verificationArgs
     if ($LASTEXITCODE -ne 0) { throw 'Release verification failed.' }
+    $releaseFiles = @('dist\Orbit-0.1.0-windows-x64.zip')
+    if (-not $SkipInstaller) { $releaseFiles += 'dist\Orbit-0.1.0-Setup-x64.exe' }
+    $checksums = foreach ($releaseFile in $releaseFiles) {
+        $hash = Get-FileHash -LiteralPath $releaseFile -Algorithm SHA256
+        $hash.Hash.ToLowerInvariant() + '  ' + [IO.Path]::GetFileName($releaseFile)
+    }
+    [IO.File]::WriteAllLines((Join-Path $projectRoot 'dist\SHA256SUMS.txt'), [string[]]$checksums, [Text.UTF8Encoding]::new($false))
     Get-ChildItem dist -File | Select-Object Name,Length
 }
 finally { Pop-Location }

@@ -48,6 +48,8 @@ Requires Inno Setup 6.7.3 or newer. Use `-SkipInstaller` for a portable ZIP only
 
 Packaging rejects an EXE over 10,000,000 bytes and verifies the compression checksum, native imports, Windows relocations, ASLR/NX flags, runtime code, and ZIP contents. Use `orbit.exe` inside `dist/Orbit-0.1.0-windows-x64` for the compact build. Files under `target/debug` are development builds.
 
+The release script tests startup, legacy data preservation, real timer expiry, paused restart, and write-failure recovery against the compressed executable before creating the installer. `dist/SHA256SUMS.txt` identifies the final installer and portable ZIP.
+
 ## Verification
 
 [Validation](docs/VALIDATION.md) lists automated checks and manual desktop scenarios. [Performance](docs/PERFORMANCE.md) records footprint and task-selection benchmarks; [stability](docs/STABILITY.md) records fault injection and native resource stress. Results identify the binaries measured and are not guarantees for later builds.
@@ -63,4 +65,4 @@ Packaging rejects an EXE over 10,000,000 bytes and verifies the compression chec
 
 Application code is [MIT licensed](LICENSE). Packaged dependency license texts are in `THIRD-PARTY-NOTICES.txt`.
 
-**Slint attribution is unresolved for distribution.** The current interface omits AboutSlint. Before distributing a build under Slint's Royalty-free License 2.0, provide the required public attribution badge or an alternative license. See the [Slint license](https://slint.dev/agreements/slint-royalty-free-license.pdf).
+The About page displays the standard AboutSlint attribution widget. Slint is distributed under its Royalty-free Desktop, Mobile, and Web Applications License 2.0; its license text is included in the dependency notices.

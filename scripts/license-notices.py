@@ -10,7 +10,7 @@ destination = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else root / "artifa
 metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", "x86_64-pc-windows-msvc"], cwd=root))
 selected = subprocess.check_output(["cargo", "tree", "--locked", "--target", "x86_64-pc-windows-msvc", "-e", "normal,build", "--prefix", "none", "--format", "{p}"], cwd=root, text=True)
 selected = {line.split(" (", 1)[0].removesuffix(" (*)").strip() for line in selected.splitlines()}
-sections = ["Orbit — third-party notices\n\nSlint is distributed as part of this desktop application under the Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0. This license requires either the AboutSlint widget in the app or the Slint badge on a public webpage. Before distributing a build without the widget, confirm the public attribution page or an alternative applicable Slint license. Other dependencies retain their own licenses. Build-tool dependencies are also included below.\n"]
+sections = ["Orbit — third-party notices\n\nSlint is distributed as part of this desktop application under the Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0. The About page displays the standard AboutSlint attribution widget. Other dependencies retain their own licenses. Build-tool dependencies are also included below.\n"]
 missing = []
 cache = root / "packaging" / "licenses"
 fetch_missing = "--fetch-missing" in sys.argv

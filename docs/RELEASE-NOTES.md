@@ -2,7 +2,7 @@
 
 Initial Windows 11 x64 release: three timer modes; tasks and estimates; SQLite settings and history; daily, weekly, and monthly reports; tray controls; configurable global shortcuts; soft alarms and volume; Windows notifications; opt-in autostart; three independently enabled widgets with saved placement, layering, and click-through recovery.
 
-Software rendering is the default, with a DPI-aware Windows manifest and a statically linked CRT. Mica falls back to solid surfaces when unavailable or high contrast is active. Slint attribution must be resolved before distribution; see the README.
+Software rendering is the default, with a DPI-aware Windows manifest and a statically linked CRT. Mica falls back to solid surfaces when unavailable or high contrast is active. The About page includes the standard AboutSlint attribution widget.
 
 Task analytics show focus time, share of total focus, and completed sessions for each task in daily, weekly, and monthly reports. Partial sessions, deleted tasks, and unassigned time retain their history. Report titles are resolved once per task, the tasks widget uses a lightweight daily summary, and startup defers analytics until Reports is opened.
 
