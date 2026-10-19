@@ -47,10 +47,16 @@ for scale in args.scales:
             end = start + minutes * 60_000
             db.execute("INSERT INTO sessions VALUES(?,?,?,?)", (101+i, 1, int(minutes == 25), end))
             db.execute("INSERT INTO intervals VALUES(?,?,?,?,?,?)", (101+i, 101+i, 1, start, end, minutes*60_000))
+        db.execute("INSERT INTO tasks(id,title,estimate,deleted) VALUES(5,'Research archived project',1,1)")
+        for i, (task_id, minutes, completed) in enumerate([(2, 18, 0), (3, 8, 0), (4, 25, 1), (5, 6, 0), (None, 2, 0)]):
+            start = int(today.timestamp() * 1000) + (i + 1) * 3_600_000
+            end = start + minutes * 60_000
+            db.execute("INSERT INTO sessions VALUES(?,?,?,?)", (201+i, task_id, completed, end))
+            db.execute("INSERT INTO intervals VALUES(?,?,?,?,?,?)", (201+i, 201+i, task_id, start, end, minutes*60_000))
     subprocess.run(command + ["--all-widgets", "--ui-audit", "--quit-after", "120"],
                    env=env, check=True, timeout=135)
     manifest = json.loads((data / "screenshots/audit.json").read_text())
-    assert len(manifest) == 19, f"Incomplete screenshots at scale {scale}: {len(manifest)}"
+    assert len(manifest) == 20, f"Incomplete screenshots at scale {scale}: {len(manifest)}"
     assert all(abs(item["scale"] - scale) < 0.01 for item in manifest), "Unexpected render scale"
     assert all((data / "screenshots" / item["image"]).stat().st_size > 100 for item in manifest)
     for item in manifest:

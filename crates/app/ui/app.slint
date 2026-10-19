@@ -3,6 +3,7 @@ import { Icon, Glyph } from "icons.slint";
 
 export struct TaskRow { id: int, title: string, estimate: int, completed: int, done: bool, selected: bool }
 export struct ReportDay { label: string, minutes: string, fraction: float }
+export struct ReportTask { title: string, time: string, share: string, detail: string, fraction: float }
 export struct WidgetRow { title: string, description: string, enabled: bool, layer: int, click-through: bool }
 
 export global Tokens {
@@ -118,6 +119,7 @@ export component MainWindow inherits Window {
     in property <[TaskRow]> tasks;
     in property <[WidgetRow]> widgets;
     in property <[ReportDay]> report-days;
+    in property <[ReportTask]> report-tasks;
     in property <string> report-title;
     in property <string> report-time: "0m";
     in property <string> report-partial: "0m";
@@ -288,6 +290,34 @@ export component MainWindow inherits Window {
                     VerticalLayout { Text { text: root.report-completed; color: Tokens.ink; font-size: 33px; font-weight: 600; } Caption { text: "COMPLETED POMODOROS"; } }
                 }
                 Rule {}
+                Text { text: "Focus by task"; color: Tokens.ink; font-size: 18px; font-weight: 600; }
+                Caption { text: "Time spent and share of total focus in this period, including partial sessions."; }
+                if root.report-tasks.length == 0: Caption { text: "No focus time yet. Select a task and start a focus session to see your breakdown here."; }
+                if root.report-tasks.length > 0: ListView {
+                    height: min(root.report-tasks.length * 78px, 312px);
+                    for task in root.report-tasks: Rectangle {
+                        height: 78px; background: transparent;
+                        VerticalLayout {
+                            padding-top: 8px; padding-bottom: 8px; padding-right: 14px; spacing: 7px;
+                            HorizontalLayout {
+                                spacing: 14px;
+                                VerticalLayout {
+                                    horizontal-stretch: 1; spacing: 3px;
+                                    Text { text: task.title; color: Tokens.ink; font-weight: 600; overflow: elide; }
+                                    Caption { text: task.detail; }
+                                }
+                                Text { text: task.time; color: Tokens.ink; font-size: 19px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right; min-width: 84px; }
+                                Caption { text: task.share; vertical-alignment: center; horizontal-alignment: right; width: 54px; }
+                            }
+                            Rectangle {
+                                height: 4px; background: Tokens.line; border-radius: 2px;
+                                Rectangle { x: 0px; width: parent.width * task.fraction; height: parent.height; background: root.accent; border-radius: 2px; }
+                            }
+                        }
+                    }
+                }
+                Rule {}
+                Text { text: "Focus by day"; color: Tokens.ink; font-size: 18px; font-weight: 600; }
                 HorizontalLayout {
                     spacing: 4px; height: root.compact ? 150px : 210px;
                     for day in root.report-days: VerticalLayout {

@@ -3,7 +3,7 @@ use chrono::{Datelike, Days, Local, Months, NaiveDate, TimeZone};
 use focus_core::{Checkpoint, Effect, Settings, WidgetPreferences};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     path::PathBuf,
     sync::{
         Arc,
@@ -38,12 +38,39 @@ pub struct DayReport {
     pub completed: u32,
 }
 #[derive(Clone, Debug, Default)]
+pub struct TaskReport {
+    pub task_id: Option<i64>,
+    pub title: String,
+    pub deleted: bool,
+    pub active_ms: u64,
+    pub completed: u32,
+}
+impl TaskReport {
+    fn new(task_id: Option<i64>, title: Option<String>, deleted: bool) -> Self {
+        Self {
+            task_id,
+            title: title.unwrap_or_else(|| match task_id {
+                Some(id) => format!("Deleted task #{id}"),
+                None => "Without a task".into(),
+            }),
+            deleted: task_id.is_some() && deleted,
+            ..Self::default()
+        }
+    }
+}
+#[derive(Clone, Debug, Default)]
 pub struct Report {
     pub title: String,
     pub days: Vec<DayReport>,
+    pub tasks: Vec<TaskReport>,
     pub active_ms: u64,
     pub completed: u32,
     pub partial_ms: u64,
+}
+#[derive(Clone, Debug, Default)]
+pub struct FocusSummary {
+    pub active_ms: u64,
+    pub completed: u32,
 }
 pub struct Loaded {
     pub settings: Settings,
@@ -79,6 +106,7 @@ pub enum Operation {
         period: Period,
         offset: i32,
     },
+    Today,
     Flush,
 }
 pub enum Response {
@@ -86,6 +114,7 @@ pub enum Response {
     Flushed,
     Tasks(Vec<Task>),
     Report(Report),
+    Today(FocusSummary),
 }
 type Job = Box<dyn FnOnce(&mut Store) + Send>;
 pub struct Worker {
@@ -136,7 +165,7 @@ impl Worker {
         validate_operation(&operation)?;
         let write = !matches!(
             operation,
-            Operation::Tasks | Operation::Report { .. } | Operation::Flush
+            Operation::Tasks | Operation::Report { .. } | Operation::Today | Operation::Flush
         );
         if write && self.is_blocked() {
             return Err(
@@ -170,7 +199,10 @@ impl Worker {
         let blocked = self.blocked.clone();
         let recovery_queued = self.recovery_queued.clone();
         let flush = matches!(operation, Operation::Flush);
-        let write = !matches!(operation, Operation::Tasks | Operation::Report { .. });
+        let write = !matches!(
+            operation,
+            Operation::Tasks | Operation::Report { .. } | Operation::Today
+        );
         let job: Job = Box::new(move |store| {
             let result = store.process(operation);
             if write && result.is_err() {
@@ -330,7 +362,10 @@ impl Store {
     fn process(&mut self, operation: Operation) -> Result<Response> {
         validate_operation(&operation)?;
         let flush = matches!(operation, Operation::Flush);
-        if matches!(operation, Operation::Tasks | Operation::Report { .. }) {
+        if matches!(
+            operation,
+            Operation::Tasks | Operation::Report { .. } | Operation::Today
+        ) {
             return self.execute(operation);
         }
         if !flush {
@@ -446,6 +481,13 @@ impl Store {
             Operation::Report { period, offset } => {
                 Ok(Response::Report(self.report(period, offset)?))
             }
+            Operation::Today => {
+                let today = Local::now().date_naive();
+                Ok(Response::Today(self.summary_between(
+                    local_midnight(today)?,
+                    local_midnight(today.succ_opt().ok_or("Date overflow")?)?,
+                )?))
+            }
             Operation::Flush => {
                 self.db
                     .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
@@ -457,6 +499,38 @@ impl Store {
     fn report(&self, period: Period, offset: i32) -> Result<Report> {
         let (start, end) = date_range(Local::now().date_naive(), period, offset)?;
         self.report_between(start, end)
+    }
+    fn summary_between(&self, begin: i64, finish: i64) -> Result<FocusSummary> {
+        let mut statement = self.db.prepare("SELECT start_ms,end_ms,active_ms FROM intervals INDEXED BY intervals_end WHERE end_ms>?1 AND start_ms<?2").map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map(params![begin, finish], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)? as u64,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut active_ms = 0;
+        for row in rows {
+            let (a, b, active) = row.map_err(|e| e.to_string())?;
+            if b > a {
+                let overlap = b.min(finish).saturating_sub(a.max(begin)).max(0) as u64;
+                active_ms += (u128::from(active) * u128::from(overlap) / (b - a) as u128) as u64;
+            }
+        }
+        let completed = self
+            .db
+            .query_row(
+                "SELECT COUNT(*) FROM sessions WHERE completed=1 AND ended_ms>=?1 AND ended_ms<?2",
+                params![begin, finish],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(FocusSummary {
+            active_ms,
+            completed,
+        })
     }
     fn report_between(&self, start: NaiveDate, end: NaiveDate) -> Result<Report> {
         if start >= end {
@@ -485,7 +559,8 @@ impl Store {
             .collect();
         let begin = boundaries[0];
         let finish = *boundaries.last().ok_or("Empty report")?;
-        let mut statement = self.db.prepare("SELECT i.start_ms,i.end_ms,i.active_ms,COALESCE(s.completed,0) FROM intervals i INDEXED BY intervals_end LEFT JOIN sessions s ON s.id=i.session_id WHERE i.end_ms>?1 AND i.start_ms<?2").map_err(|e| e.to_string())?;
+        let mut tasks = BTreeMap::new();
+        let mut statement = self.db.prepare("SELECT i.start_ms,i.end_ms,i.active_ms,COALESCE(s.completed,0),i.task_id FROM intervals i INDEXED BY intervals_end LEFT JOIN sessions s ON s.id=i.session_id WHERE i.end_ms>?1 AND i.start_ms<?2").map_err(|e| e.to_string())?;
         let rows = statement
             .query_map(params![begin, finish], |r| {
                 Ok((
@@ -493,18 +568,20 @@ impl Store {
                     r.get::<_, i64>(1)?,
                     r.get::<_, i64>(2)? as u64,
                     r.get::<_, bool>(3)?,
+                    r.get::<_, Option<i64>>(4)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut partial_ms = 0u64;
         for row in rows {
-            let (a, b, active, completed) = row.map_err(|e| e.to_string())?;
+            let (a, b, active, completed, task_id) = row.map_err(|e| e.to_string())?;
             if b <= a {
                 continue;
             }
             let first = boundaries
                 .partition_point(|boundary| *boundary <= a)
                 .saturating_sub(1);
+            let mut task_ms = 0;
             for (i, bucket) in days.iter_mut().enumerate().skip(first) {
                 if boundaries[i] >= b {
                     break;
@@ -515,14 +592,63 @@ impl Store {
                     .max(0) as u64;
                 let credited = (u128::from(active) * u128::from(overlap) / (b - a) as u128) as u64;
                 bucket.active_ms += credited;
+                task_ms += credited;
                 if !completed {
                     partial_ms += credited;
                 }
+            }
+            if task_ms > 0 {
+                tasks
+                    .entry(task_id)
+                    .or_insert_with(|| TaskReport {
+                        task_id,
+                        ..TaskReport::default()
+                    })
+                    .active_ms += task_ms;
             }
         }
         for (i, bucket) in days.iter_mut().enumerate() {
             bucket.completed = self.db.query_row("SELECT COUNT(*) FROM sessions WHERE completed=1 AND ended_ms>=?1 AND ended_ms<?2", params![boundaries[i],boundaries[i+1]], |r| r.get(0)).map_err(|e| e.to_string())?;
         }
+        let mut statement = self.db.prepare("SELECT task_id,COUNT(*) FROM sessions WHERE completed=1 AND ended_ms>=?1 AND ended_ms<?2 GROUP BY task_id").map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map(params![begin, finish], |r| {
+                Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, u32>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (task_id, completed) = row.map_err(|e| e.to_string())?;
+            tasks
+                .entry(task_id)
+                .or_insert_with(|| TaskReport {
+                    task_id,
+                    ..TaskReport::default()
+                })
+                .completed = completed;
+        }
+        // Resolve titles once per distinct task instead of allocating one per interval.
+        let mut titles = self
+            .db
+            .prepare("SELECT title,deleted FROM tasks WHERE id=?1")
+            .map_err(|e| e.to_string())?;
+        for task in tasks.values_mut() {
+            let saved: Option<(String, bool)> = titles
+                .query_row([task.task_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()
+                .map_err(|e| e.to_string())?;
+            let (title, deleted) =
+                saved.map_or((None, true), |(title, deleted)| (Some(title), deleted));
+            let metadata = TaskReport::new(task.task_id, title, deleted);
+            task.title = metadata.title;
+            task.deleted = metadata.deleted;
+        }
+        let mut tasks: Vec<_> = tasks.into_values().collect();
+        tasks.sort_by(|a, b| {
+            b.active_ms
+                .cmp(&a.active_ms)
+                .then_with(|| a.title.cmp(&b.title))
+                .then_with(|| a.task_id.cmp(&b.task_id))
+        });
         Ok(Report {
             title: if dates.len() == 1 {
                 start.format("%A, %d %B").to_string()
@@ -536,6 +662,7 @@ impl Store {
             active_ms: days.iter().map(|d| d.active_ms).sum(),
             completed: days.iter().map(|d| d.completed).sum(),
             days,
+            tasks,
             partial_ms,
         })
     }
@@ -608,6 +735,73 @@ mod tests {
     use focus_core::{Command, TimePoint, Timer};
     fn memory() -> Store {
         Store::connection(Connection::open_in_memory().unwrap()).unwrap()
+    }
+    #[test]
+    #[ignore = "Opt-in report timing with 100,000 intervals and 500 tasks"]
+    fn report_analytics_benchmark() {
+        let mut store = memory();
+        let day = Local::now().date_naive();
+        let begin = day.checked_sub_days(Days::new(30)).unwrap();
+        let end = day.succ_opt().unwrap();
+        {
+            let tx = store.db.transaction().unwrap();
+            for id in 1..=500 {
+                tx.execute("INSERT INTO tasks(id,title,estimate) VALUES(?1,?2,3)", params![id, format!("Task {id}: Review project notes 日本語 हिंदी and prepare the next iteration")]).unwrap();
+            }
+            let mut interval = tx.prepare("INSERT INTO intervals(session_id,task_id,start_ms,end_ms,active_ms) VALUES(?1,?2,?3,?4,30000)").unwrap();
+            let mut session = tx
+                .prepare("INSERT INTO sessions(id,task_id,completed,ended_ms) VALUES(?1,?2,?3,?4)")
+                .unwrap();
+            for index in 0..100_000 {
+                let date = day.checked_sub_days(Days::new(index % 31)).unwrap();
+                let start = local_midnight(date).unwrap() + (index / 31) as i64 * 20_000;
+                let id = index as i64 + 1;
+                let task = id % 500 + 1;
+                interval
+                    .execute(params![id, task, start, start + 30_000])
+                    .unwrap();
+                session
+                    .execute(params![id, task, index % 2 == 0, start + 30_000])
+                    .unwrap();
+            }
+            drop(interval);
+            drop(session);
+            tx.commit().unwrap();
+        }
+        let measure = |start, end| {
+            let mut samples = Vec::new();
+            for _ in 0..11 {
+                let clock = std::time::Instant::now();
+                let report = store.report_between(start, end).unwrap();
+                assert_eq!(
+                    report.tasks.iter().map(|t| t.active_ms).sum::<u64>(),
+                    report.active_ms
+                );
+                samples.push(clock.elapsed().as_secs_f64() * 1000.0);
+            }
+            samples.remove(0);
+            samples.sort_by(f64::total_cmp);
+            samples[samples.len() / 2]
+        };
+        let expected = store.report_between(day, end).unwrap();
+        let mut summaries = Vec::new();
+        for _ in 0..11 {
+            let clock = std::time::Instant::now();
+            let summary = store
+                .summary_between(local_midnight(day).unwrap(), local_midnight(end).unwrap())
+                .unwrap();
+            assert_eq!(
+                (summary.active_ms, summary.completed),
+                (expected.active_ms, expected.completed)
+            );
+            summaries.push(clock.elapsed().as_secs_f64() * 1000.0);
+        }
+        summaries.remove(0);
+        summaries.sort_by(f64::total_cmp);
+        eprintln!(
+            "{}",
+            serde_json::json!({"intervals":100000,"tasks":500,"dayReportMedianMs":measure(day,end),"monthReportMedianMs":measure(begin,end),"todaySummaryMedianMs":summaries[summaries.len()/2]})
+        );
     }
     #[test]
     fn persistent_failure_has_a_bounded_retry_queue_and_keeps_accepted_writes() {
@@ -855,6 +1049,13 @@ mod tests {
         let r = s.report_between(d, d.succ_opt().unwrap()).unwrap();
         assert_eq!(r.active_ms, 60000);
         assert_eq!(r.partial_ms, 60000);
+        let summary = s
+            .summary_between(midnight, local_midnight(d.succ_opt().unwrap()).unwrap())
+            .unwrap();
+        assert_eq!(
+            (summary.active_ms, summary.completed),
+            (r.active_ms, r.completed)
+        );
         s.db.execute(
             "INSERT INTO sessions(id,completed,ended_ms) VALUES(1,1,?1)",
             [midnight + 60000],
@@ -863,6 +1064,106 @@ mod tests {
         let r = s.report_between(d, d.succ_opt().unwrap()).unwrap();
         assert_eq!(r.completed, 1);
         assert_eq!(r.partial_ms, 0);
+        let summary = s
+            .summary_between(midnight, local_midnight(d.succ_opt().unwrap()).unwrap())
+            .unwrap();
+        assert_eq!(
+            (summary.active_ms, summary.completed),
+            (r.active_ms, r.completed)
+        );
+    }
+    #[test]
+    fn task_reports_keep_distinct_tasks_deleted_history_and_unassigned_time() {
+        let mut store = memory();
+        let day = Local::now().date_naive();
+        let start = local_midnight(day).unwrap();
+        store.db.execute_batch("INSERT INTO tasks(id,title,estimate) VALUES(1,'Read 日本語 हिंदी',2),(2,'Read 日本語 हिंदी',1),(3,'Unused',1);").unwrap();
+        // Multiple intervals in one completed session must credit completion only once.
+        for (session, task, offset, active) in [
+            (1, Some(1), 0, 120_000),
+            (1, Some(1), 120_000, 60_000),
+            (2, Some(2), 180_000, 90_000),
+            (3, None, 270_000, 30_000),
+            (4, Some(1), -120_000, 60_000), // Outside this period.
+        ] {
+            store.db.execute("INSERT INTO intervals(session_id,task_id,start_ms,end_ms,active_ms) VALUES(?1,?2,?3,?4,?5)", params![session, task, start + offset, start + offset + active, active]).unwrap();
+        }
+        store
+            .db
+            .execute(
+                "INSERT INTO sessions(id,task_id,completed,ended_ms) VALUES(1,1,1,?1),(2,2,0,?1)",
+                [start + 300_000],
+            )
+            .unwrap();
+        store.execute(Operation::DeleteTask(1)).unwrap();
+        let report = store.report_between(day, day.succ_opt().unwrap()).unwrap();
+        assert_eq!(report.active_ms, 300_000);
+        assert_eq!(report.partial_ms, 120_000);
+        assert_eq!(report.completed, 1);
+        assert_eq!(report.tasks.len(), 3);
+        let first = &report.tasks[0];
+        assert_eq!(first.task_id, Some(1));
+        assert_eq!(first.title, "Read 日本語 हिंदी");
+        assert!(first.deleted);
+        assert_eq!((first.active_ms, first.completed), (180_000, 1));
+        assert_eq!(report.tasks[1].task_id, Some(2));
+        assert!(!report.tasks[1].deleted);
+        assert_eq!(report.tasks[2].task_id, None);
+        assert_eq!(report.tasks[2].title, "Without a task");
+        assert!(!report.tasks[2].deleted);
+        assert_eq!(
+            report.tasks.iter().map(|t| t.active_ms).sum::<u64>(),
+            report.active_ms
+        );
+        assert_eq!(
+            report.tasks.iter().map(|t| t.completed).sum::<u32>(),
+            report.completed
+        );
+        assert!(
+            store
+                .report_between(
+                    day.succ_opt().unwrap(),
+                    day.checked_add_days(Days::new(2)).unwrap()
+                )
+                .unwrap()
+                .tasks
+                .is_empty()
+        );
+    }
+    #[test]
+    fn task_reports_share_daily_clipping_and_completion_boundaries() {
+        let store = memory();
+        let day = Local::now().date_naive();
+        let start = local_midnight(day).unwrap();
+        let end = local_midnight(day.succ_opt().unwrap()).unwrap();
+        // Different wall and active durations exercise proportional clipping and rounding.
+        store.db.execute("INSERT INTO intervals(session_id,task_id,start_ms,end_ms,active_ms) VALUES(1,7,?1,?2,100001),(2,NULL,?3,?4,60000)", params![start - 60_000, start + 60_000, end - 30_000, end + 30_000]).unwrap();
+        store.db.execute("INSERT INTO sessions(id,task_id,completed,ended_ms) VALUES(1,7,1,?1),(2,NULL,1,?2),(3,9,1,?3)", params![start + 60_000, end, start]).unwrap();
+        for days in [1, 7, 31] {
+            let report = store
+                .report_between(day, day.checked_add_days(Days::new(days)).unwrap())
+                .unwrap();
+            assert_eq!(
+                report.tasks.iter().map(|t| t.active_ms).sum::<u64>(),
+                report.active_ms
+            );
+            assert_eq!(
+                report.tasks.iter().map(|t| t.completed).sum::<u32>(),
+                report.completed
+            );
+            let task = report.tasks.iter().find(|t| t.task_id == Some(7)).unwrap();
+            assert_eq!(task.active_ms, 50_000);
+            assert_eq!(task.title, "Deleted task #7");
+            assert!(task.deleted);
+            let no_intervals = report.tasks.iter().find(|t| t.task_id == Some(9)).unwrap();
+            assert_eq!((no_intervals.active_ms, no_intervals.completed), (0, 1));
+            let unassigned = report.tasks.iter().find(|t| t.task_id.is_none()).unwrap();
+            assert_eq!(
+                unassigned.active_ms,
+                if days == 1 { 30_000 } else { 60_000 }
+            );
+            assert_eq!(unassigned.completed, u32::from(days > 1));
+        }
     }
     #[test]
     fn week_and_month_follow_calendar_boundaries() {

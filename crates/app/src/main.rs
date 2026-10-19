@@ -184,7 +184,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 a.create_widget(i);
             }
         }
-        a.request_report();
         a.request_today();
         a.render();
         a.reschedule();
@@ -596,23 +595,24 @@ impl App {
                 self.render();
             }
             Ok(Response::Report(report)) => {
-                if generation & (1u64 << 63) != 0 {
-                    if generation == self.today_generation {
-                        for widget in self.widgets.iter().flatten() {
-                            if let Widget::Tasks(w) = widget {
-                                w.set_today_label(
-                                    format!(
-                                        "{} focus · {} completed",
-                                        duration_label(report.active_ms),
-                                        report.completed
-                                    )
-                                    .into(),
-                                );
-                            }
+                if generation == self.report_generation {
+                    self.show_report(report);
+                }
+            }
+            Ok(Response::Today(summary)) => {
+                if generation == self.today_generation {
+                    for widget in self.widgets.iter().flatten() {
+                        if let Widget::Tasks(w) = widget {
+                            w.set_today_label(
+                                format!(
+                                    "{} focus · {} completed",
+                                    duration_label(summary.active_ms),
+                                    summary.completed
+                                )
+                                .into(),
+                            );
                         }
                     }
-                } else if generation == self.report_generation {
-                    self.show_report(report);
                 }
             }
             Ok(Response::Saved) => {}
@@ -745,13 +745,7 @@ impl App {
         }
     }
     fn send_today(&mut self) {
-        if self.submit(
-            Operation::Report {
-                period: Period::Day,
-                offset: 0,
-            },
-            self.today_generation,
-        ) {
+        if self.submit(Operation::Today, self.today_generation) {
             self.today_in_flight = Some(self.today_generation);
         }
     }
@@ -762,6 +756,32 @@ impl App {
         self.main
             .set_report_partial(duration_label(report.partial_ms).into());
         self.main.set_report_completed(report.completed as i32);
+        self.main.set_report_tasks(ModelRc::new(VecModel::from(
+            report
+                .tasks
+                .into_iter()
+                .map(|task| {
+                    let fraction = if report.active_ms == 0 {
+                        0.0
+                    } else {
+                        task.active_ms as f32 / report.active_ms as f32
+                    };
+                    ReportTask {
+                        title: task.title.into(),
+                        time: duration_label(task.active_ms).into(),
+                        share: format!("{:.1}%", fraction * 100.0).into(),
+                        detail: format!(
+                            "{} completed session{}{}",
+                            task.completed,
+                            if task.completed == 1 { "" } else { "s" },
+                            if task.deleted { " · Deleted task" } else { "" }
+                        )
+                        .into(),
+                        fraction,
+                    }
+                })
+                .collect::<Vec<_>>(),
+        )));
         let maximum = report
             .days
             .iter()
@@ -775,7 +795,7 @@ impl App {
                 .into_iter()
                 .map(|d| ReportDay {
                     label: d.label.into(),
-                    minutes: format!("{}m", d.active_ms / 60_000).into(),
+                    minutes: duration_label(d.active_ms).into(),
                     fraction: d.active_ms as f32 / maximum,
                 })
                 .collect::<Vec<_>>(),
@@ -1182,6 +1202,8 @@ fn duration_label(ms: u64) -> String {
     let minutes = ms / 60_000;
     if minutes >= 60 {
         format!("{}h {:02}m", minutes / 60, minutes % 60)
+    } else if ms > 0 && minutes == 0 {
+        "<1m".into()
     } else {
         format!("{minutes}m")
     }

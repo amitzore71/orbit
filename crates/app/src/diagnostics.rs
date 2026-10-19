@@ -62,7 +62,7 @@ pub fn performance(output: PathBuf) {
 /// Capture actual software-rendered windows at two layouts and in high contrast.
 /// Diagnostic-only code and PNG support are absent from ordinary release builds.
 pub fn audit(output: PathBuf) {
-    const SCENARIOS: [(&str, i32, bool, bool); 16] = [
+    const SCENARIOS: [(&str, i32, bool, bool); 17] = [
         ("timer", 0, false, false),
         ("tasks", 1, false, false),
         ("reports", 2, false, false),
@@ -78,6 +78,7 @@ pub fn audit(output: PathBuf) {
         ("timer-notice", 0, true, false),
         ("timer-high-contrast", 0, true, true),
         ("tasks-high-contrast", 1, true, true),
+        ("reports-high-contrast", 2, true, true),
         ("widgets-high-contrast", 3, true, true),
     ];
     std::fs::create_dir_all(&output).unwrap();

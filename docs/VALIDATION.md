@@ -8,7 +8,7 @@ cargo test --workspace --features diagnostics --locked
 cargo clippy --workspace --all-targets --features diagnostics --locked -- -D warnings
 ```
 
-Core tests cover timer transitions, delayed expiry, sleep exclusion, task binding, restart recovery, and randomized command sequences. Storage tests cover migrations, Unicode tasks, checkpoint durability, calendar reports, transaction rollback, and bounded write-failure recovery. App tests cover ring geometry and task-model selection/reuse. Windows tests cover clocks and shortcuts.
+Core tests cover timer transitions, delayed expiry, sleep exclusion, task binding, restart recovery, and randomized command sequences. Storage tests cover migrations, Unicode tasks, checkpoint durability, calendar and per-task reports, deleted and unassigned task history, report boundary clipping, transaction rollback, and bounded write-failure recovery. App tests cover ring geometry and task-model selection/reuse. Windows tests cover clocks and shortcuts.
 
 Native resource tests are opt-in: `cargo test -p platform-win --locked -- --ignored --test-threads=1 --nocapture`. See [the stability audit](STABILITY.md) for fault injection, resource measurements, and Application Verifier commands.
 
@@ -21,7 +21,7 @@ python scripts/integration-check.py target/debug/orbit.exe
 # After a release build: python scripts/integration-failure-check.py
 ```
 
-The UI audit captures six pages at regular and compact sizes, a recovery notice, three high-contrast states, and three widgets: 19 images at each of 100%, 125%, 150%, and 200% scale. Fixtures include long and multilingual task titles and non-empty reports. Images and manifests go to ignored `artifacts/ui-audit-<timestamp>` directories. Inspect the images; dimension checks alone do not validate layout.
+The UI audit captures six pages at regular and compact sizes, a recovery notice, four high-contrast states, and three widgets: 20 images at each of 100%, 125%, 150%, and 200% scale. Fixtures include long and multilingual task titles, deleted and unassigned task history, and non-empty reports. Images and manifests go to ignored `artifacts/ui-audit-<timestamp>` directories. Inspect the images; dimension checks alone do not validate layout.
 
 The scale override and synthetic high-contrast tokens do not test real monitor transitions or Windows theme changes. Diagnostic code and PNG dependencies are excluded from ordinary builds.
 

@@ -14,7 +14,7 @@ For portable notifications, open **Settings → Notifications** to register the 
 
 - **Timer:** Focus, short break, and long break. Defaults are 25/5/15 minutes, with a long break every four completed focus sessions. Sleep and hibernation do not consume time. Automatic starts are off by default.
 - **Tasks:** Add a title and a 1–99 session estimate. Selecting a task affects the next session; an ongoing session keeps its original task. Only finished focus sessions increase completion counts. Skips and resets retain partial focus time. Deleting a task preserves its history.
-- **Reports:** Daily, Monday-based weekly, and calendar-month totals. Includes partial focus time, excludes pauses and sleep, and uses the current Windows time zone.
+- **Reports:** Daily, Monday-based weekly, and calendar-month totals. Focus by task shows time spent, percentage of total focus, and completed sessions, sorted by time spent. Includes partial focus time, deleted task history, and time without a task; excludes pauses and sleep, and uses the current Windows time zone.
 - **Widgets:** Timer ring, today's tasks, and mini timer. Drag a header to move a widget. Configure layering and click-through in Widgets; use **Unlock all widgets** in the tray to recover click-through windows.
 - **Settings:** Session lengths, automatic starts, alarms, volume, notifications, appearance, shortcuts, and opt-in startup. Duration changes apply to the next session.
 

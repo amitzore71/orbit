@@ -1,6 +1,22 @@
 # Performance measurements
 
-## Compact release size — 19 October 2026
+## Task analytics optimization — 19 October 2026
+
+Matched release-profile storage benchmarks use an in-memory SQLite database with 100,000 focus intervals, 50,000 completed sessions, and 500 multilingual task titles across 31 days. Each median uses ten samples after one warm-up. These timings measure report construction, excluding painting and disk I/O.
+
+| Measurement | Before | After |
+|---|---:|---:|
+| Daily task report | 13.1339 ms | 7.4565 ms |
+| 31-day task report | 355.5735 ms | 231.5246 ms |
+| Tasks widget daily totals | 13.1339 ms (full report) | 3.0885 ms (summary) |
+
+Task titles are loaded once per distinct task rather than once per interval. The tasks widget skips task aggregation, title lookups, sorting, and day-model construction. Startup defers the full report until Reports is opened. Existing interval indexes and asynchronous/coalesced report requests remain in use; the task breakdown is virtualized.
+
+Reproduce the optimized measurement with `cargo test -p focus-storage --release --locked report_analytics_benchmark -- --ignored --nocapture`. The benchmark verifies task totals and daily-summary equality. It uses synthetic data to stress report processing; the values are measurements on this machine, not universal guarantees.
+
+## Historical compact release size — 19 October 2026
+
+These size measurements predate task analytics and the AboutSlint widget. Current executable sizes and hashes are recorded in `build-info.json`.
 
 | Build | Bytes | MB (decimal) |
 |---|---:|---:|
