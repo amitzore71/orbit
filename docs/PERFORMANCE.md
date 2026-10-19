@@ -1,5 +1,19 @@
 # Performance measurements
 
+## Compact release size — 19 October 2026
+
+| Build | Bytes | MB (decimal) |
+|---|---:|---:|
+| Development EXE from the reported screenshot | 42,775,552 | 42.78 |
+| Uncompressed release | 10,646,016 | 10.65 |
+| Packaged release, UPX 5.2.1 | 4,238,336 | 4.24 |
+
+Removing unused SQLite extensions reduced the uncompressed release from 11,009,536 to 10,646,016 bytes. The packaged EXE uses LZMA executable compression and expands in memory at startup. The 10,000,000-byte packaging limit applies to the distributed EXE. [Build metadata](build-info.json) records both compressed and uncompressed sizes and hashes.
+
+The compact binary passed all-window startup, Unicode/legacy database preservation, a real 60-second expiry, paused restart recovery, SQLite write-failure recovery, and integrity checks. Packaging verifies restored runtime code/data, unwind tables, relocations, ASLR/NX, native imports, and ZIP equality. Windows icon resources and the DPI manifest were checked separately. Runtime memory measurements below describe the historical uncompressed binary.
+
+## Historical runtime footprint
+
 Measured on **19 October 2026**, Microsoft Windows NT 10.0.26300.0, x64, 16 logical processors, using the release software renderer and a statically linked CRT. The recorded audit executable was **10.07 MiB** (10,555,392 bytes).
 
 These runtime measurements predate the Orbit branding update. They describe the executable identified in `footprint.json`, not the current source. `build-info.json` identifies the last packaged executable.

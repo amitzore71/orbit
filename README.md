@@ -38,11 +38,15 @@ The default build uses Slint's software renderer and accessibility support. The 
 
 ## Package
 
+Install [UPX 5.2.1](https://github.com/upx/upx/releases/tag/v5.2.1) on PATH, or pass its executable with `-UpxPath`. The compact release uses executable compression; ordinary Cargo builds remain uncompressed.
+
 ```powershell
-.\scripts\Build-Release.ps1 -InnoCompiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+.\scripts\Build-Release.ps1 -UpxPath "C:\Tools\upx.exe" -InnoCompiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 ```
 
 Requires Inno Setup 6.7.3 or newer. Use `-SkipInstaller` for a portable ZIP only. Outputs go to `dist`. Dependency notices are assembled from the Cargo registry and committed upstream license texts.
+
+Packaging rejects an EXE over 10,000,000 bytes and verifies the compression checksum, native imports, Windows relocations, ASLR/NX flags, runtime code, and ZIP contents. Use `orbit.exe` inside `dist/Orbit-0.1.0-windows-x64` for the compact build. Files under `target/debug` are development builds.
 
 ## Verification
 

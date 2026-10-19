@@ -1,8 +1,6 @@
 {
   "application": "Orbit",
-  "executableSha256": "E396E1B066A603D1640C3F2BCA3B0F33588A6D3F660F0A7548314C2352410980",
-  "ordinaryTestsPassed": 28,
-  "clippyPassed": true,
+  "executableSha256": "15E8D792734E748147592DFBDF97DFC1FD786F93A75D2D1AF1F313AE48A0CA55",
   "canonicalDatabaseCreated": true,
   "legacyDatabaseReused": true,
   "unicodeTaskPreserved": true,

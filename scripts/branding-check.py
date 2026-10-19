@@ -5,10 +5,11 @@ import json
 from pathlib import Path
 import sqlite3
 import subprocess
+import sys
 import time
 
 root = Path(__file__).resolve().parents[1]
-exe = root / "target/release/orbit.exe"
+exe = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else root / "target/release/orbit.exe"
 data = root / "artifacts" / f"orbit-branding-{time.time_ns()}"
 
 
