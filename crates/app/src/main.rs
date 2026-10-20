@@ -3,16 +3,23 @@ use focus_core::{Clock, Command, Effect, Mode, Settings, Timer, WidgetPreference
 use focus_storage::{Operation, Period, Report, Response, Task, Worker};
 use platform_win::{Event, EventHandler, Platform, WindowsClock};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
 slint::include_modules!();
 const TASK_REQUEST: u64 = 1u64 << 62;
+const CHECKPOINT_REQUEST: u64 = TASK_REQUEST + 1;
+const CREATE_REQUEST: u64 = TASK_REQUEST + 2;
+const SETTINGS_REQUEST: u64 = TASK_REQUEST + 3;
+const DATA_REQUEST: u64 = TASK_REQUEST + 4;
+const PAGE_TIMER: i32 = 0;
+const PAGE_TASKS: i32 = 1;
+const PAGE_REPORTS: i32 = 2;
 #[cfg(feature = "diagnostics")]
 mod diagnostics;
+mod product;
 #[cfg(test)]
 mod regression_tests;
 mod task_models;
-
 thread_local! {static APP:RefCell<Option<Rc<RefCell<App>>>>=const{RefCell::new(None)};}
 fn with_app(action: impl FnOnce(&mut App)) {
     let app = APP.with_borrow(Clone::clone);
@@ -65,6 +72,13 @@ struct App {
     widgets: [Option<Widget>; 3],
     display_timer: slint::Timer,
     expiry_timer: slint::Timer,
+    checkpoint_timer: slint::Timer,
+    calendar_timer: slint::Timer,
+    calendar_date: String,
+    checkpoint_pending: bool,
+    start_after_create: bool,
+    create_pending: bool,
+    detail_generation: u64,
     period: Period,
     report_offset: i32,
     report_generation: u64,
@@ -79,7 +93,6 @@ struct App {
     widget_attached: [bool; 3],
     main_requested_visible: bool,
 }
-
 fn main() -> std::process::ExitCode {
     if let Err(error) = run() {
         if !std::env::args().any(|a| a == "--register-notifications") {
@@ -153,6 +166,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         widgets: Default::default(),
         display_timer: Default::default(),
         expiry_timer: Default::default(),
+        checkpoint_timer: Default::default(),
+        calendar_timer: Default::default(),
+        calendar_date: focus_storage::local_date(),
+        checkpoint_pending: false,
+        start_after_create: false,
+        create_pending: false,
+        detail_generation: TASK_REQUEST + 1024,
         period: Period::Week,
         report_offset: 0,
         report_generation: 0,
@@ -171,7 +191,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut a = app.borrow_mut();
         a.wire_main();
+        a.wire_product();
+        if let Some(path) = &loaded.last_backup {
+            a.main
+                .set_data_status(format!("Last backup: {path}").into());
+        }
         a.load_settings();
+        let selected = a.timer.checkpoint(WindowsClock.now()).selected_task;
+        if selected.is_some_and(|id| !a.tasks.iter().any(|t| t.id == id && !t.done && !t.deleted)) {
+            a.command(Command::SelectTask(None));
+        }
         a.refresh_tasks();
         a.refresh_widget_rows();
         if loaded.recovered {
@@ -234,7 +263,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     APP.with_borrow_mut(|slot| *slot = None);
     Ok(())
 }
-
 impl App {
     fn message(&self, message: &str) {
         self.main.set_message(message.into());
@@ -262,6 +290,8 @@ impl App {
         });
         self.main.on_report_change(|period, step| {
             with_app(|a| {
+                a.main.set_range_start("".into());
+                a.main.set_range_end("".into());
                 let period = match period {
                     0 => Period::Day,
                     2 => Period::Month,
@@ -324,12 +354,15 @@ impl App {
         });
         self.main.on_navigate(|page| {
             with_app(|a| {
-                if page == 4 {
-                    a.load_settings();
+                a.cancel_capture();
+                a.refresh_calendar();
+                if page == PAGE_TASKS {
+                    a.task_models
+                        .filter(a.main.get_task_view(), a.main.get_task_search().as_str());
                 }
                 // Returning to the timer must refresh its value and restart display
                 // updates even after a page without a timer suspended those updates.
-                a.command(if page == 2 {
+                a.command(if page == PAGE_REPORTS {
                     Command::Checkpoint
                 } else {
                     Command::Tick
@@ -343,6 +376,27 @@ impl App {
     }
     fn control(&mut self, name: &str) {
         match name {
+            "retry" => {
+                self.main.set_save_status("Retrying saved changes…".into());
+                self.submit(Operation::Flush, 0);
+            }
+            "discard-settings" => {
+                self.cancel_capture();
+                self.load_settings();
+            }
+            "quit-discard" => {
+                self.load_settings();
+                self.quit();
+            }
+            "backup" => self.begin_file_dialog(0),
+            "restore" => self.begin_file_dialog(1),
+            "export" => self.begin_file_dialog(2),
+            "restore-confirm" => {
+                let path = PathBuf::from(self.main.get_restore_path().as_str());
+                self.main.set_restore_path("".into());
+                self.main
+                    .set_data_busy(self.submit(Operation::Restore(path), DATA_REQUEST));
+            }
             "toggle" => self.command(Command::Toggle),
             "skip" => self.command(Command::Skip),
             "reset" => self.command(Command::Reset),
@@ -364,6 +418,19 @@ impl App {
         }
     }
     fn command(&mut self, command: Command) {
+        if self.main.get_data_busy()
+            && !matches!(
+                command,
+                Command::Tick
+                    | Command::Checkpoint
+                    | Command::Pause
+                    | Command::Suspend
+                    | Command::Resume
+            )
+        {
+            self.message("Finish the file operation before changing the timer.");
+            return;
+        }
         #[cfg(feature = "diagnostics")]
         if matches!(command, Command::Tick) {
             self.diagnostic_ticks += 1;
@@ -392,6 +459,9 @@ impl App {
             self.message("Saving was interrupted. Retrying saved changes; the timer stays paused. Try the control again after saving recovers.");
             return;
         }
+        if matches!(command, Command::Checkpoint) && self.checkpoint_pending {
+            return;
+        }
         let now = WindowsClock.now();
         let previous = self.timer.clone();
         let effects = self.timer.dispatch(command, now);
@@ -415,17 +485,24 @@ impl App {
                     effects,
                     checkpoint: self.timer.checkpoint(now),
                 },
-                0,
+                if matches!(command, Command::Checkpoint) {
+                    CHECKPOINT_REQUEST
+                } else {
+                    0
+                },
             ) {
                 self.timer = previous;
                 self.reschedule();
                 return;
             }
+            if matches!(command, Command::Checkpoint) {
+                self.checkpoint_pending = true;
+            }
             if tasks_changed {
                 self.request_tasks();
             }
             self.request_today();
-            if self.main.get_page() == 2 {
+            if self.main.get_page() == PAGE_REPORTS {
                 self.request_report();
             }
             let snapshot = self.timer.snapshot(now);
@@ -463,7 +540,7 @@ impl App {
     fn render(&self) {
         self.sync_layout();
         let main_visible = surface_visible(self.main.window());
-        let main_timer = main_visible && self.main.get_page() == 0;
+        let main_timer = main_visible && self.main.get_page() == PAGE_TIMER;
         let ring_widget =
             self.widgets.iter().flatten().any(|widget| {
                 matches!(widget, Widget::Timer(_)) && surface_visible(widget.window())
@@ -473,9 +550,30 @@ impl App {
                 matches!(widget, Widget::Mini(_)) && surface_visible(widget.window())
             });
         let snapshot = self.timer.snapshot(WindowsClock.now());
+        self.main.set_storage_blocked(self.storage.is_blocked());
+        self.main.set_running(snapshot.running);
+        self.main.set_started(snapshot.started);
+        self.main
+            .set_can_start_task(!snapshot.started && snapshot.mode == Mode::Focus);
         if main_visible {
             // Other pages also use the current mode's accent after a session ends.
             self.main.set_mode(snapshot.mode.index());
+        }
+        for widget in self.widgets.iter().flatten() {
+            match widget {
+                Widget::Timer(w) => {
+                    w.set_storage_blocked(self.storage.is_blocked());
+                    w.set_started(snapshot.started);
+                }
+                Widget::Mini(w) => {
+                    w.set_storage_blocked(self.storage.is_blocked());
+                    w.set_started(snapshot.started);
+                }
+                Widget::Tasks(w) => {
+                    w.set_storage_blocked(self.storage.is_blocked());
+                    w.set_started(snapshot.started);
+                }
+            }
         }
         if !main_timer && !ring_widget && !mini_widget {
             return;
@@ -506,14 +604,45 @@ impl App {
             let task = snapshot
                 .task
                 .and_then(|id| self.tasks.iter().find(|t| t.id == id))
-                .map(|t| t.title.as_str())
-                .unwrap_or("No task selected");
+                .map(|t| {
+                    if t.deleted {
+                        format!("{} · Deleted task", t.title)
+                    } else {
+                        t.title.clone()
+                    }
+                })
+                .unwrap_or_else(|| "Focus without a task".into());
             self.main.set_active_task(task.into());
+            let checkpoint = self.timer.checkpoint(WindowsClock.now());
+            let next = if snapshot.started && checkpoint.selected_task != checkpoint.bound_task {
+                checkpoint
+                    .selected_task
+                    .and_then(|id| self.tasks.iter().find(|t| t.id == id))
+                    .map(|t| format!("Next focus: {}", t.title))
+                    .unwrap_or_else(|| "Next focus: without a task".into())
+            } else {
+                String::new()
+            };
+            self.main.set_next_task(next.into());
+            let completed = snapshot.cycle % self.timer.settings.long_interval.max(1);
+            self.main.set_cycle_label(
+                format!(
+                    "{} of {} focus sessions before a long break",
+                    if completed == 0 && snapshot.cycle > 0 && snapshot.mode == Mode::LongBreak {
+                        self.timer.settings.long_interval
+                    } else {
+                        completed
+                    },
+                    self.timer.settings.long_interval
+                )
+                .into(),
+            );
         }
+        let tokens = self.main.global::<Tokens>();
         let accent = match snapshot.mode {
-            Mode::Focus => slint::Color::from_rgb_u8(183, 71, 53),
-            Mode::ShortBreak => slint::Color::from_rgb_u8(33, 115, 102),
-            Mode::LongBreak => slint::Color::from_rgb_u8(84, 92, 155),
+            Mode::Focus => tokens.get_coral(),
+            Mode::ShortBreak => tokens.get_teal(),
+            Mode::LongBreak => tokens.get_indigo(),
         };
         for widget in self.widgets.iter().flatten() {
             if !surface_visible(widget.window()) {
@@ -540,10 +669,18 @@ impl App {
         self.display_timer.stop();
         self.expiry_timer.stop();
         let snapshot = self.timer.snapshot(WindowsClock.now());
-        if !snapshot.running || self.quitting {
+        if !snapshot.running || self.quitting || self.storage.is_blocked() {
+            self.checkpoint_timer.stop();
             return;
         }
-        let visible = (surface_visible(self.main.window()) && self.main.get_page() == 0)
+        if !self.checkpoint_timer.running() {
+            self.checkpoint_timer.start(
+                slint::TimerMode::Repeated,
+                Duration::from_secs(60),
+                || with_app(|a| a.command(Command::Checkpoint)),
+            );
+        }
+        let visible = (surface_visible(self.main.window()) && self.main.get_page() == PAGE_TIMER)
             || self
                 .widgets
                 .iter()
@@ -580,6 +717,10 @@ impl App {
         true
     }
     fn storage_response(&mut self, generation: u64, result: focus_storage::Result<Response>) {
+        if generation == CHECKPOINT_REQUEST {
+            self.checkpoint_pending = false;
+        }
+        self.main.set_storage_blocked(self.storage.is_blocked());
         if generation == TASK_REQUEST {
             self.tasks_in_flight = false;
             if self.tasks_dirty {
@@ -596,8 +737,41 @@ impl App {
         if self.today_in_flight == Some(generation) {
             self.today_in_flight = None;
         }
+        if generation > 0 && generation < TASK_REQUEST && generation != self.report_generation {
+            if self.report_in_flight.is_none() {
+                self.send_report();
+            }
+            return;
+        }
+        if (TASK_REQUEST + 1024..(1u64 << 63)).contains(&generation)
+            && generation != self.detail_generation
+        {
+            return;
+        }
         match result {
             Err(e) => {
+                if generation > 0 && generation < TASK_REQUEST && !self.storage.is_blocked() {
+                    self.main.set_range_error(e.into());
+                    return;
+                }
+                if generation == self.detail_generation {
+                    self.main.set_detail_rows(ModelRc::new(VecModel::from(vec![
+                        SharedString::from(format!("Could not load details: {e}")),
+                    ])));
+                }
+
+                if generation == SETTINGS_REQUEST || self.storage.is_blocked() {
+                    self.main.set_settings_saving(false);
+                }
+                if generation == DATA_REQUEST || self.storage.is_blocked() {
+                    self.main.set_data_busy(false);
+                }
+                if generation == CREATE_REQUEST || self.storage.is_blocked() {
+                    self.main.set_task_saving(false);
+                    self.start_after_create = false;
+                }
+                self.main
+                    .set_save_status("Could not save — timer paused".into());
                 if self.storage.is_blocked() && self.timer.snapshot(WindowsClock.now()).running {
                     let now = WindowsClock.now();
                     let effects = self.timer.dispatch(Command::Pause, now);
@@ -620,11 +794,64 @@ impl App {
             }
             Ok(Response::Tasks(tasks)) => {
                 self.tasks = tasks;
+                let selected = self.timer.checkpoint(WindowsClock.now()).selected_task;
+                if selected.is_some_and(|id| {
+                    !self
+                        .tasks
+                        .iter()
+                        .any(|t| t.id == id && !t.done && !t.deleted)
+                }) && !self.storage.is_blocked()
+                {
+                    self.command(Command::SelectTask(None));
+                }
                 self.refresh_tasks();
                 self.render();
             }
             Ok(Response::TasksChanged) => self.request_tasks(),
+            Ok(Response::TaskCreated(task)) => {
+                self.create_pending = false;
+                let id = task.id;
+                self.tasks.push(task);
+                self.main.set_task_saving(false);
+                self.main.set_task_title("".into());
+                self.main.set_task_estimate(1);
+                self.refresh_tasks();
+                if std::mem::take(&mut self.start_after_create) {
+                    self.command(Command::StartTask(id));
+                }
+                self.request_tasks();
+            }
+            Ok(Response::TaskDeleted(id)) => {
+                self.main.set_undo_id(id as i32);
+                slint::Timer::single_shot(Duration::from_secs(10), move || {
+                    with_app(|a| {
+                        if a.main.get_undo_id() == id as i32 {
+                            a.main.set_undo_id(-1);
+                        }
+                    })
+                });
+                self.request_tasks();
+            }
+            Ok(Response::BackedUp(path)) => {
+                self.main.set_data_busy(false);
+                self.main.set_data_status(
+                    format!("Backup saved: {}. The timer is paused.", path.display()).into(),
+                );
+            }
+            Ok(Response::SessionDetails(rows)) => {
+                if generation == self.detail_generation {
+                    self.main.set_detail_rows(ModelRc::new(VecModel::from(
+                        rows.into_iter().map(SharedString::from).collect::<Vec<_>>(),
+                    )));
+                }
+            }
+            Ok(Response::Exported(path)) => {
+                self.main.set_data_busy(false);
+                self.message(&format!("Report exported: {}", path.display()));
+            }
+            Ok(Response::Restored(loaded)) => self.apply_restore(*loaded),
             Ok(Response::SettingsSaved(settings)) => {
+                self.main.set_settings_saving(false);
                 self.apply_saved_settings(settings);
             }
             Ok(Response::Report(report)) => {
@@ -634,6 +861,14 @@ impl App {
             }
             Ok(Response::Today(summary)) => {
                 if generation == self.today_generation {
+                    self.main.set_today_label(
+                        format!(
+                            "{} today · {} completed",
+                            duration_label(summary.active_ms),
+                            summary.completed
+                        )
+                        .into(),
+                    );
                     for widget in self.widgets.iter().flatten() {
                         if let Widget::Tasks(w) = widget {
                             w.set_today_label(
@@ -648,12 +883,23 @@ impl App {
                     }
                 }
             }
-            Ok(Response::Saved) => {}
+            Ok(Response::Saved) => {
+                self.main.set_save_status("Saved".into());
+            }
             Ok(Response::Flushed(settings)) => {
+                if std::mem::take(&mut self.create_pending) {
+                    self.main.set_task_title("".into());
+                    self.main.set_task_estimate(1);
+                    self.start_after_create = false;
+                }
+                self.main.set_settings_saving(false);
+                self.main.set_task_saving(false);
+                self.main
+                    .set_save_status("Changes saved. Ready to resume.".into());
                 self.apply_saved_settings(settings);
                 self.request_tasks();
                 self.request_today();
-                if self.main.get_page() == 2 {
+                if self.main.get_page() == PAGE_REPORTS {
                     self.request_report();
                 }
                 self.message("Changes saved. The timer is paused and ready to resume.");
@@ -662,7 +908,7 @@ impl App {
         if self.report_in_flight.is_none()
             && generation != 0
             && generation & (1u64 << 63) == 0
-            && generation != TASK_REQUEST
+            && generation < TASK_REQUEST
             && generation != self.report_generation
         {
             self.send_report();
@@ -692,10 +938,17 @@ impl App {
     fn refresh_tasks(&self) {
         let selected = self.timer.checkpoint(WindowsClock.now()).selected_task;
         self.task_models.rebuild(&self.tasks, selected);
-        self.main.set_tasks(self.task_models.all.clone().into());
+        self.task_models.filter(
+            self.main.get_task_view(),
+            self.main.get_task_search().as_str(),
+        );
+        self.main
+            .set_tasks(self.task_models.filtered.clone().into());
+        self.main
+            .set_picker_tasks(self.task_models.active.clone().into());
         for widget in self.widgets.iter().flatten() {
             if let Widget::Tasks(w) = widget {
-                w.set_tasks(self.task_models.active.clone().into());
+                w.set_tasks(self.task_models.today.clone().into());
             }
         }
     }
@@ -704,15 +957,23 @@ impl App {
             .select(self.timer.checkpoint(WindowsClock.now()).selected_task);
     }
     fn save_task(&mut self) {
+        if self.main.get_task_saving() {
+            return;
+        }
         let title = self.main.get_task_title().to_string();
         let estimate = self.main.get_task_estimate().clamp(1, 99) as u32;
         if title.trim().is_empty() || title.chars().count() > 240 {
+            self.start_after_create = false;
             self.message("Write a task title with 1–240 characters.");
             return;
         }
         let id = self.main.get_edit_id();
         let operation = if id < 0 {
-            Operation::AddTask { title, estimate }
+            Operation::CreateTask {
+                title,
+                estimate,
+                today: self.main.get_task_view() == 0 || self.main.get_page() == PAGE_TIMER,
+            }
         } else {
             Operation::EditTask {
                 id: i64::from(id),
@@ -720,14 +981,33 @@ impl App {
                 estimate,
             }
         };
-        if !self.submit(operation, 0) {
+        if !self.submit(operation, if id < 0 { CREATE_REQUEST } else { 0 }) {
+            self.start_after_create = false;
             return;
         }
-        self.main.set_task_title("".into());
-        self.main.set_task_estimate(1);
-        self.main.set_edit_id(-1);
+        if id < 0 {
+            self.create_pending = true;
+            self.main.set_task_saving(true);
+        } else {
+            self.main.set_task_title("".into());
+            self.main.set_task_estimate(1);
+            self.main.set_edit_id(-1);
+        }
     }
     fn task_action(&mut self, id: i64, action: &str) {
+        if action == "start" {
+            if self
+                .tasks
+                .iter()
+                .any(|t| t.id == id && !t.done && !t.deleted)
+            {
+                self.command(Command::StartTask(id));
+                self.main.set_page(PAGE_TIMER);
+                self.render();
+                self.reschedule();
+            }
+            return;
+        }
         if action == "select" {
             self.command(Command::SelectTask(if id < 0 { None } else { Some(id) }));
             self.refresh_task_selection();
@@ -746,10 +1026,33 @@ impl App {
                 self.submit(Operation::ToggleTaskDone(id), 0);
             }
             "delete" => {
-                if self.timer.checkpoint(WindowsClock.now()).selected_task == Some(id) {
-                    self.command(Command::SelectTask(None));
-                }
                 self.submit(Operation::DeleteTask(id), 0);
+            }
+            "restore" => {
+                self.submit(Operation::RestoreTask(id), 0);
+                self.main.set_undo_id(-1);
+            }
+            "plan" => {
+                self.submit(Operation::PlanTask { id, today: true }, 0);
+            }
+            "unplan" => {
+                self.submit(Operation::PlanTask { id, today: false }, 0);
+            }
+            "up" | "down" => {
+                self.submit(
+                    Operation::MoveTask {
+                        id,
+                        direction: if action == "up" { -1 } else { 1 },
+                    },
+                    0,
+                );
+            }
+            "details" => {
+                self.main.set_detail_title(task.title.into());
+                self.main
+                    .set_detail_rows(ModelRc::new(VecModel::from(vec![SharedString::from(
+                        "Task history is preserved across completion and deletion.",
+                    )])));
             }
             _ => {}
         }
@@ -761,20 +1064,23 @@ impl App {
         }
     }
     fn send_report(&mut self) {
-        if self.submit(
-            Operation::Report {
-                period: self.period,
-                offset: self.report_offset,
-            },
-            self.report_generation,
-        ) {
+        let operation =
+            if self.main.get_range_start().is_empty() && self.main.get_range_end().is_empty() {
+                Operation::Report {
+                    period: self.period,
+                    offset: self.report_offset,
+                }
+            } else {
+                Operation::ReportRange {
+                    start: self.main.get_range_start().to_string(),
+                    end: self.main.get_range_end().to_string(),
+                }
+            };
+        if self.submit(operation, self.report_generation) {
             self.report_in_flight = Some(self.report_generation);
         }
     }
     fn request_today(&mut self) {
-        if !matches!(self.widgets[1], Some(Widget::Tasks(_))) {
-            return;
-        }
         self.today_generation = ((self.today_generation + 1) & (TASK_REQUEST - 1)) | (1u64 << 63);
         if self.today_in_flight.is_none() {
             self.send_today();
@@ -785,7 +1091,30 @@ impl App {
             self.today_in_flight = Some(self.today_generation);
         }
     }
-    fn show_report(&self, report: Report) {
+    fn show_report(&self, mut report: Report) {
+        self.main.set_range_error("".into());
+        let chunk_size = if report.days.len() > 31 {
+            report.days.len().div_ceil(14)
+        } else {
+            1
+        };
+        self.main.set_chart_note(if chunk_size > 1 {
+            format!("Each bar groups up to {chunk_size} days. Export includes every day.").into()
+        } else {
+            "".into()
+        });
+        if chunk_size > 1 {
+            report.days = report
+                .days
+                .chunks(chunk_size)
+                .map(|chunk| focus_storage::DayReport {
+                    label: chunk[0].label.clone(),
+                    active_ms: chunk.iter().map(|d| d.active_ms).sum(),
+                    completed: chunk.iter().map(|d| d.completed).sum(),
+                })
+                .collect();
+        }
+
         self.main.set_report_title(report.title.into());
         self.main
             .set_report_time(duration_label(report.active_ms).into());
@@ -803,6 +1132,7 @@ impl App {
                         task.active_ms as f32 / report.active_ms as f32
                     };
                     ReportTask {
+                        id: task.task_id.map_or(-1, |id| id as i32),
                         title: task.title.into(),
                         time: duration_label(task.active_ms).into(),
                         share: format!("{:.1}%", fraction * 100.0).into(),
@@ -816,6 +1146,12 @@ impl App {
                         fraction,
                     }
                 })
+                .collect::<Vec<_>>(),
+        )));
+        let task_model = self.main.get_report_tasks();
+        self.main.set_report_preview(ModelRc::new(VecModel::from(
+            (0..task_model.row_count().min(3))
+                .filter_map(|index| task_model.row_data(index))
                 .collect::<Vec<_>>(),
         )));
         let maximum = report
@@ -854,9 +1190,12 @@ impl App {
         self.main.set_toggle_hotkey(s.hotkey_toggle.clone().into());
         self.main.set_show_hotkey(s.hotkey_show.clone().into());
         self.main.set_skip_hotkey(s.hotkey_skip.clone().into());
+        self.main.set_appearance(s.appearance as i32);
+        self.main.set_saved_settings(product::draft(s));
         self.apply_appearance();
     }
     fn save_settings(&mut self) {
+        self.cancel_capture();
         let s = Settings {
             focus_minutes: self.main.get_focus_minutes() as u32,
             short_minutes: self.main.get_short_minutes() as u32,
@@ -873,15 +1212,19 @@ impl App {
             hotkey_toggle: self.main.get_toggle_hotkey().to_string(),
             hotkey_show: self.main.get_show_hotkey().to_string(),
             hotkey_skip: self.main.get_skip_hotkey().to_string(),
+            appearance: self.main.get_appearance() as u32,
         };
         if let Err(e) = s
             .validate()
             .and_then(|_| platform_win::validate_hotkeys(&s))
         {
+            self.main.set_settings_error(e.clone().into());
             self.message(&e);
             return;
         }
-        if self.submit(Operation::Settings(s), 0) {
+        self.main.set_settings_error("".into());
+        if self.submit(Operation::Settings(s), SETTINGS_REQUEST) {
+            self.main.set_settings_saving(true);
             self.message("Saving settings…");
         }
     }
@@ -897,8 +1240,16 @@ impl App {
         if settings != self.timer.settings {
             warnings.extend(self.platform.hotkeys(&settings));
             self.timer.settings = settings;
+            let now = WindowsClock.now();
+            let snapshot = self.timer.snapshot(now);
+            if !snapshot.started {
+                self.timer.dispatch(Command::SelectMode(snapshot.mode), now);
+            }
         }
+        self.main
+            .set_saved_settings(product::draft(&self.timer.settings));
         self.apply_appearance();
+        self.main.set_settings_error(warnings.join(" ").into());
         let message = if warnings.is_empty() {
             "Settings saved. New durations apply to the next session.".to_string()
         } else {
@@ -970,7 +1321,7 @@ impl App {
         self.apply_appearance();
         self.position_widget(index);
         if let Some(Widget::Tasks(widget)) = &self.widgets[index] {
-            widget.set_tasks(self.task_models.active.clone().into());
+            widget.set_tasks(self.task_models.today.clone().into());
         }
         self.render();
         self.request_today();
@@ -1101,6 +1452,12 @@ impl App {
             Event::Skip => self.command(Command::Skip),
             Event::Reset => self.command(Command::Reset),
             Event::Quit => self.quit(),
+            Event::Shutdown => {
+                self.main.set_data_busy(false);
+                self.cancel_capture();
+                self.load_settings();
+                self.quit();
+            }
             Event::Suspend => {
                 self.command(Command::Suspend);
             }
@@ -1146,9 +1503,20 @@ impl App {
                 self.save_widget(index);
             }
             Event::Error(error) => self.message(&error),
+            Event::FileDialog { kind, result } => self.file_selected(kind, result),
         }
     }
     fn quit(&mut self) {
+        self.cancel_capture();
+        if self.main.get_data_busy() {
+            self.message("Finish the file operation before quitting.");
+            return;
+        }
+        if self.main.get_settings_dirty() {
+            self.main.set_confirm_quit(true);
+            self.show();
+            return;
+        }
         if self.quitting {
             return;
         }
@@ -1170,6 +1538,8 @@ impl App {
         self.quitting = true;
         self.display_timer.stop();
         self.expiry_timer.stop();
+        self.checkpoint_timer.stop();
+        self.calendar_timer.stop();
         self.render();
         self.message("Saving before exiting…");
     }
@@ -1189,12 +1559,18 @@ impl App {
     }
     fn apply_appearance(&self) {
         let high_contrast = platform_win::high_contrast();
+        let reduced_motion = platform_win::reduced_motion();
+        let dark = self.timer.settings.appearance == 2
+            || (self.timer.settings.appearance == 0 && platform_win::prefers_dark());
         let colors = platform_win::system_colors().map(|color| {
             slint::Color::from_rgb_u8(color as u8, (color >> 8) as u8, (color >> 16) as u8)
         });
         let apply = |tokens: Tokens<'_>| {
-            tokens.set_reduced_motion(self.timer.settings.reduced_motion || high_contrast);
+            tokens.set_reduced_motion(
+                self.timer.settings.reduced_motion || high_contrast || reduced_motion,
+            );
             tokens.set_high_contrast(high_contrast);
+            tokens.set_dark(dark);
             tokens.set_system_background(colors[0]);
             tokens.set_system_foreground(colors[1]);
             tokens.set_system_highlight(colors[2]);
@@ -1215,6 +1591,7 @@ impl App {
                 self.timer.settings.mica && !high_contrast,
             ));
         }
+        self.render();
     }
     fn sync_layout(&self) {
         let window = self.main.window();
@@ -1243,7 +1620,6 @@ impl App {
         window.set_position(slint::PhysicalPosition::new(x, y));
     }
 }
-
 fn duration_label(ms: u64) -> String {
     let minutes = ms / 60_000;
     if minutes >= 60 {

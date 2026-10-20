@@ -11,6 +11,8 @@ use std::{
 struct RowIndices {
     all: usize,
     active: Option<usize>,
+    today: Option<usize>,
+    filtered: Option<usize>,
 }
 
 /// Stable models keep list delegates and focus intact when only selection changes.
@@ -18,6 +20,8 @@ struct RowIndices {
 pub struct TaskModels {
     pub all: Rc<VecModel<TaskRow>>,
     pub active: Rc<VecModel<TaskRow>>,
+    pub today: Rc<VecModel<TaskRow>>,
+    pub filtered: Rc<VecModel<TaskRow>>,
     indices: RefCell<HashMap<i64, RowIndices>>,
     selected: Cell<Option<i64>>,
 }
@@ -26,6 +30,8 @@ impl TaskModels {
     pub fn rebuild(&self, tasks: &[Task], selected: Option<i64>) {
         let mut rows = Vec::with_capacity(tasks.len());
         let mut active = Vec::new();
+        let mut today_rows = Vec::new();
+        let today = focus_storage::local_date();
         let mut indices = self.indices.borrow_mut();
         indices.clear();
         indices.reserve(tasks.len());
@@ -37,19 +43,34 @@ impl TaskModels {
                 completed: task.completed as i32,
                 done: task.done,
                 selected: selected == Some(task.id),
+                deleted: task.deleted,
+                planned: task.planned_for.as_deref() == Some(&today),
+                carried: task
+                    .planned_for
+                    .as_deref()
+                    .is_some_and(|date| date < today.as_str()),
             };
-            let active_index = if task.done {
+            let active_index = if task.done || task.deleted {
                 None
             } else {
                 let index = active.len();
                 active.push(row.clone());
                 Some(index)
             };
+            let today_index = if row.planned && !task.done && !task.deleted {
+                let index = today_rows.len();
+                today_rows.push(row.clone());
+                Some(index)
+            } else {
+                None
+            };
             indices.insert(
                 task.id,
                 RowIndices {
                     all: rows.len(),
                     active: active_index,
+                    today: today_index,
+                    filtered: None,
                 },
             );
             rows.push(row);
@@ -58,6 +79,32 @@ impl TaskModels {
         self.selected.set(selected);
         self.all.set_vec(rows);
         self.active.set_vec(active);
+        self.today.set_vec(today_rows);
+    }
+
+    pub fn filter(&self, view: i32, search: &str) {
+        let search = search.trim().to_lowercase();
+        let mut indices = self.indices.borrow_mut();
+        for entry in indices.values_mut() {
+            entry.filtered = None;
+        }
+        let mut rows = Vec::new();
+        for row in self.all.iter() {
+            let visible = match view {
+                0 => row.planned && !row.done && !row.deleted,
+                2 => row.done && !row.deleted,
+                3 => row.deleted,
+                4 => row.carried && !row.done && !row.deleted,
+                _ => !row.done && !row.deleted,
+            };
+            if visible && (search.is_empty() || row.title.to_lowercase().contains(&search)) {
+                if let Some(entry) = indices.get_mut(&i64::from(row.id)) {
+                    entry.filtered = Some(rows.len());
+                }
+                rows.push(row);
+            }
+        }
+        self.filtered.set_vec(rows);
     }
 
     pub fn select(&self, selected: Option<i64>) {
@@ -72,6 +119,12 @@ impl TaskModels {
                 Self::set_selected(&self.all, index.all, checked);
                 if let Some(active) = index.active {
                     Self::set_selected(&self.active, active, checked);
+                }
+                if let Some(today) = index.today {
+                    Self::set_selected(&self.today, today, checked);
+                }
+                if let Some(filtered) = index.filtered {
+                    Self::set_selected(&self.filtered, filtered, checked);
                 }
             }
         }
@@ -96,7 +149,31 @@ mod tests {
             estimate: 3,
             completed: 1,
             done,
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn today_trash_carry_forward_and_unicode_search_keep_selection_consistent() {
+        let models = TaskModels::default();
+        let mut today = task(1, false);
+        today.planned_for = Some(focus_storage::local_date());
+        let mut carried = task(2, false);
+        carried.planned_for = Some("2000-01-01".into());
+        let mut deleted = task(3, false);
+        deleted.deleted = true;
+        models.rebuild(&[today, carried, deleted, task(4, true)], Some(1));
+        assert_eq!(models.today.row_count(), 1);
+        models.filter(3, "");
+        assert_eq!(models.filtered.row_data(0).unwrap().id, 3);
+        models.filter(4, "");
+        assert_eq!(models.filtered.row_data(0).unwrap().id, 2);
+        models.filter(0, "日本語");
+        assert_eq!(models.filtered.row_count(), 1);
+        models.select(Some(2));
+        assert!(selected(&models.today).is_empty());
+        assert!(selected(&models.filtered).is_empty());
+        assert_eq!(selected(&models.active), [2]);
     }
 
     fn selected(model: &VecModel<TaskRow>) -> Vec<i32> {

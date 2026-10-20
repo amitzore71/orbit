@@ -50,6 +50,8 @@ pub struct Settings {
     pub hotkey_toggle: String,
     pub hotkey_show: String,
     pub hotkey_skip: String,
+    /// 0 follows Windows, 1 is light, 2 is dark.
+    pub appearance: u32,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -68,7 +70,8 @@ impl Default for Settings {
             autostart: false,
             hotkey_toggle: "Ctrl+Alt+P".into(),
             hotkey_show: "Ctrl+Alt+O".into(),
-            hotkey_skip: "Ctrl+Alt+N".into(),
+            hotkey_skip: String::new(),
+            appearance: 0,
         }
     }
 }
@@ -83,7 +86,7 @@ impl Settings {
         if !(1..=12).contains(&self.long_interval) {
             return Err("Long break interval must be 1–12.".into());
         }
-        if self.volume > 100 || self.sound > 2 {
+        if self.volume > 100 || self.sound > 2 || self.appearance > 2 {
             return Err("Invalid alarm settings.".into());
         }
         if [&self.hotkey_toggle, &self.hotkey_show, &self.hotkey_skip]
@@ -173,6 +176,7 @@ pub enum Command {
     Reset,
     SelectMode(Mode),
     SelectTask(Option<i64>),
+    StartTask(i64),
     Suspend,
     Resume,
     Checkpoint,
@@ -213,6 +217,10 @@ impl Timer {
     /// Restarts never infer focus time from wall time. An interrupted run is restored paused.
     pub fn restore(settings: Settings, mut state: Checkpoint) -> Self {
         state.running = false;
+        if !state.started {
+            state.total_ms = settings.duration_ms(state.mode);
+            state.remaining_ms = state.total_ms;
+        }
         state.total_ms = state.total_ms.max(1);
         state.remaining_ms = state.remaining_ms.min(state.total_ms);
         state.next_session_id = state
@@ -370,6 +378,12 @@ impl Timer {
                 self.load_mode(mode);
             }
             Command::SelectTask(task) => self.state.selected_task = task,
+            Command::StartTask(task) => {
+                self.state.selected_task = Some(task);
+                if !self.state.started && self.state.mode == Mode::Focus {
+                    self.start(now);
+                }
+            }
             Command::Suspend => {
                 self.close_segment(now, &mut effects);
                 self.suspended = true;
@@ -421,6 +435,47 @@ impl Default for WidgetPreferences {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn start_task_is_atomic_and_never_rebinds_a_started_session() {
+        let mut timer = Timer::new(Settings::default());
+        timer.dispatch(Command::StartTask(10), t(0, 0));
+        assert!(timer.snapshot(t(0, 0)).running);
+        timer.dispatch(Command::Pause, t(1000, 1000));
+        timer.dispatch(Command::StartTask(20), t(2000, 2000));
+        let saved = timer.checkpoint(t(2000, 2000));
+        assert_eq!(saved.bound_task, Some(10));
+        assert_eq!(saved.selected_task, Some(20));
+        assert!(!saved.running);
+        timer.dispatch(Command::Reset, t(2000, 2000));
+        timer.dispatch(Command::StartTask(20), t(2000, 2000));
+        assert_eq!(timer.snapshot(t(2000, 2000)).task, Some(20));
+    }
+
+    #[test]
+    fn periodic_checkpoint_splits_segments_without_inventing_crash_time() {
+        let mut timer = Timer::new(Settings::default());
+        timer.dispatch(Command::Start, t(0, 0));
+        let effects = timer.dispatch(Command::Checkpoint, t(60_000, 60_000));
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::FocusInterval {
+                active_ms: 60_000,
+                ..
+            }]
+        ));
+        let saved = timer.checkpoint(t(60_000, 60_000));
+        let mut recovered = Timer::restore(timer.settings.clone(), saved);
+        assert!(!recovered.snapshot(t(99_000, 999_000)).running);
+        assert!(
+            recovered
+                .dispatch(Command::Checkpoint, t(99_000, 999_000))
+                .is_empty()
+        );
+        assert_eq!(
+            recovered.snapshot(t(99_000, 999_000)).remaining_ms,
+            24 * 60_000
+        );
+    }
     use super::*;
     #[test]
     fn randomized_commands_conserve_active_time_and_complete_each_session_once() {

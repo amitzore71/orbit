@@ -1,3 +1,21 @@
+# Orbit 0.2.0 — 20 October 2026
+
+Orbit 0.2 adds a quieter light/dark interface and a complete task-to-focus workflow while retaining the native Rust/Slint software renderer.
+
+- Three primary destinations: Timer, Tasks, and Reports. Widgets, Data, and About live in grouped Settings.
+- Today planning and ordering, Unicode task search, Carry forward, Completed, Trash, and timed deletion Undo.
+- Timer task picker, quick-add, explicit Start focus / Use next behavior, current/next task context, and Resume wording.
+- Coalesced one-minute running checkpoints, persistent blocked-save status, and an explicit Retry saving action.
+- Preserved settings drafts, Save/Discard, shortcut recording and disable controls, Windows theme following, and reduced-motion handling.
+- Native file selection, verified SQLite snapshots, pre-upgrade backups, and atomic restoration with a pre-restore recovery copy. The timer remains paused after restore; this computer's startup opt-in is retained.
+- Custom report ranges, session details, and UTF-8 CSV export with formula-safe task titles. Long chart ranges are grouped for readability; CSV retains daily detail.
+
+Existing databases migrate to schema 4 after an automatic backup. Old task IDs, estimates, completed sessions, partial time, and deleted-task history are retained. Existing tasks remain unplanned. Upgrades preserve the previous light appearance and configured shortcuts; new installations follow Windows and leave the skip shortcut disabled.
+
+Older Orbit versions cannot open schema 4. Keep the pre-upgrade backup if a downgrade is needed. Uninstall retains data. Manual and pre-restore backups are retained; the latest three automatic upgrade backups are retained. Native restore replaces the database through SQLite's backup transaction and refreshes the application in place; a restart is unnecessary.
+
+Performance measurements identify the binary and test scope. See PERFORMANCE.md and RELEASE-VALIDATION.md. No comparative “fastest app” claim is established by these measurements.
+
 # Orbit 0.1.1 — 20 October 2026
 
 Orbit 0.1.1 prioritizes fast startup, low runtime memory, and reliable persistence.

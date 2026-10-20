@@ -27,6 +27,10 @@ with contextlib.closing(sqlite3.connect(data / "still.db")) as db:
         db.execute("INSERT OR REPLACE INTO meta VALUES('settings',?)", (json.dumps(dict(
             volume=0, notifications=False, autostart=False, hotkey_toggle="", hotkey_show="", hotkey_skip="")),))
         # Exercise the actual schema-2 upgrade, including an unusually long old interval.
+        if "planned_for" in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
+            db.execute("DROP INDEX tasks_planning")
+            db.execute("ALTER TABLE tasks DROP COLUMN planned_for")
+            db.execute("ALTER TABLE tasks DROP COLUMN today_order")
         db.execute("DROP INDEX intervals_long_start")
         db.execute("PRAGMA user_version=2")
         db.execute("INSERT INTO intervals(session_id,start_ms,end_ms,active_ms) VALUES(987654,0,172800000,172800000)")
@@ -35,7 +39,7 @@ assert not (data / "orbit.db").exists(), "The existing database must not be repl
 with contextlib.closing(sqlite3.connect(data / "still.db")) as db:
     assert db.execute("SELECT title,estimate FROM tasks WHERE deleted=0").fetchall() == [("Orbit preserves 日本語 हिंदी tasks", 3)]
     assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 4
     assert db.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='intervals_long_start'").fetchone()[0] == 1
     assert db.execute("SELECT start_ms,end_ms,active_ms FROM intervals WHERE session_id=987654").fetchone() == (0,172800000,172800000)
     checkpoint = json.loads(db.execute("SELECT value FROM meta WHERE key='timer'").fetchone()[0])

@@ -1,7 +1,6 @@
 use super::*;
 use rusqlite::Connection;
 use std::sync::mpsc;
-
 struct Headless;
 impl slint::platform::Platform for Headless {
     fn create_window_adapter(
@@ -14,7 +13,6 @@ impl slint::platform::Platform for Headless {
         )
     }
 }
-
 fn fixture() -> App {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     slint::platform::set_platform(Box::new(Headless)).unwrap();
@@ -30,7 +28,7 @@ fn fixture() -> App {
                 .as_nanos()
         ));
     let (storage, loaded) = Worker::open(data_dir.join("orbit.db")).unwrap();
-    App {
+    let app = App {
         #[cfg(feature = "diagnostics")]
         diagnostic_ticks: 0,
         main: MainWindow::new().unwrap(),
@@ -43,6 +41,13 @@ fn fixture() -> App {
         widgets: Default::default(),
         display_timer: Default::default(),
         expiry_timer: Default::default(),
+        checkpoint_timer: Default::default(),
+        calendar_timer: Default::default(),
+        calendar_date: focus_storage::local_date(),
+        checkpoint_pending: false,
+        start_after_create: false,
+        create_pending: false,
+        detail_generation: TASK_REQUEST + 1024,
         period: Period::Week,
         report_offset: 0,
         report_generation: 0,
@@ -56,9 +61,10 @@ fn fixture() -> App {
         main_attached: false,
         widget_attached: [false; 3],
         main_requested_visible: false,
-    }
+    };
+    app.load_settings();
+    app
 }
-
 fn hold(worker: &Worker) -> mpsc::Sender<()> {
     let (release, wait) = mpsc::channel();
     let (ready, rx) = mpsc::channel();
@@ -71,7 +77,6 @@ fn hold(worker: &Worker) -> mpsc::Sender<()> {
     rx.recv().unwrap();
     release
 }
-
 #[test]
 fn task_completion_preserves_pending_title_and_estimate_edits() {
     let mut app = fixture();
@@ -87,6 +92,7 @@ fn task_completion_preserves_pending_title_and_estimate_edits() {
         estimate: 1,
         completed: 0,
         done: false,
+        ..Default::default()
     });
     let release = hold(&app.storage);
     app.main.set_edit_id(1);
@@ -105,7 +111,6 @@ fn task_completion_preserves_pending_title_and_estimate_edits() {
         .unwrap();
     assert_eq!(task, ("Edited title".into(), 3, true));
 }
-
 #[test]
 fn rejected_settings_do_not_change_runtime_or_claim_success() {
     let mut app = fixture();
@@ -137,7 +142,6 @@ fn rejected_settings_do_not_change_runtime_or_claim_success() {
         0
     );
 }
-
 #[test]
 fn quit_uses_reserved_capacity_and_preserves_the_final_pause() {
     let mut app = fixture();
@@ -161,7 +165,6 @@ fn quit_uses_reserved_capacity_and_preserves_the_final_pause() {
     assert!(!checkpoint.running);
     app.finish_quit(Ok(Response::Saved));
 }
-
 #[test]
 fn task_snapshot_requests_coalesce_and_discard_superseded_results() {
     let mut app = fixture();
@@ -178,6 +181,7 @@ fn task_snapshot_requests_coalesce_and_discard_superseded_results() {
             estimate: 1,
             completed: 0,
             done: false,
+            ..Default::default()
         }])),
     );
     assert!(app.tasks.is_empty());
@@ -185,7 +189,6 @@ fn task_snapshot_requests_coalesce_and_discard_superseded_results() {
     release.send(()).unwrap();
     app.storage.flush().unwrap();
 }
-
 #[test]
 fn resume_clears_suspension_even_while_storage_is_blocked() {
     let mut app = fixture();
@@ -209,4 +212,81 @@ fn resume_clears_suspension_even_while_storage_is_blocked() {
     app.command(Command::Start);
     assert!(app.timer.snapshot(WindowsClock.now()).running);
     app.storage.flush().unwrap();
+}
+
+#[test]
+fn settings_ack_preserves_newer_unsaved_edits_and_marks_the_right_baseline() {
+    let mut app = fixture();
+    app.main.set_focus_minutes(42);
+    assert!(app.main.get_settings_dirty());
+    app.apply_saved_settings(Settings {
+        focus_minutes: 30,
+        ..Settings::default()
+    });
+    assert_eq!(app.main.get_focus_minutes(), 42);
+    assert_eq!(app.main.get_saved_settings().focus, 30);
+    assert_eq!(
+        app.timer.snapshot(WindowsClock.now()).remaining_ms,
+        30 * 60_000
+    );
+    assert!(app.main.get_settings_dirty());
+    app.load_settings();
+    assert_eq!(app.main.get_focus_minutes(), 30);
+    assert!(!app.main.get_settings_dirty());
+}
+
+#[test]
+fn report_error_does_not_release_unrelated_pending_task_or_file_operations() {
+    let mut app = fixture();
+    app.main.set_task_saving(true);
+    app.main.set_data_busy(true);
+    app.start_after_create = true;
+    app.storage_response(42, Err("Invalid report date".into()));
+    assert!(app.main.get_task_saving());
+    assert!(app.main.get_data_busy());
+    assert!(app.start_after_create);
+}
+
+#[test]
+fn recovery_ack_clears_an_accepted_create_draft_without_inserting_it_twice() {
+    let mut app = fixture();
+    let db = Connection::open(app.data_dir.join("orbit.db")).unwrap();
+    db.execute_batch("CREATE TRIGGER deny_create BEFORE INSERT ON tasks BEGIN SELECT RAISE(ABORT,'injected'); END;").unwrap();
+    app.main.set_task_title("Keep exactly once".into());
+    app.start_after_create = true;
+    app.save_task();
+    assert!(app.storage.flush().is_err());
+    app.storage_response(CREATE_REQUEST, Err("injected".into()));
+    assert!(app.create_pending);
+    db.execute_batch("DROP TRIGGER deny_create").unwrap();
+    app.storage.flush().unwrap();
+    app.storage_response(0, Ok(Response::Flushed(Settings::default())));
+    assert!(app.main.get_task_title().is_empty());
+    assert!(!app.start_after_create);
+    assert!(!app.timer.snapshot(WindowsClock.now()).running);
+    app.save_task();
+    app.storage.flush().unwrap();
+    assert_eq!(
+        db.query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get::<_, u32>(0))
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn confirmed_windows_shutdown_saves_the_timer_without_waiting_on_a_settings_dialog() {
+    let mut app = fixture();
+    app.command(Command::Start);
+    app.main.set_focus_minutes(42);
+    assert!(app.main.get_settings_dirty());
+    app.native_event(Event::Shutdown);
+    assert!(app.quitting);
+    app.storage.flush().unwrap();
+    let db = Connection::open(app.data_dir.join("orbit.db")).unwrap();
+    let saved: String = db
+        .query_row("SELECT value FROM meta WHERE key='timer'", [], |r| r.get(0))
+        .unwrap();
+    let checkpoint: focus_core::Checkpoint = serde_json::from_str(&saved).unwrap();
+    assert!(!checkpoint.running);
+    assert_eq!(app.timer.settings.focus_minutes, 25);
 }

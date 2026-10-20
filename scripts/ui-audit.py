@@ -5,6 +5,7 @@ Run: python scripts/ui-audit.py
 """
 import argparse
 import contextlib
+import hashlib
 from datetime import datetime, timedelta
 import json
 import os
@@ -53,18 +54,23 @@ for scale in args.scales:
             end = start + minutes * 60_000
             db.execute("INSERT INTO sessions VALUES(?,?,?,?)", (201+i, task_id, completed, end))
             db.execute("INSERT INTO intervals VALUES(?,?,?,?,?,?)", (201+i, 201+i, task_id, start, end, minutes*60_000))
+    with sqlite3.connect(data / "orbit.db") as db:
+        today=datetime.now().date()
+        db.execute("UPDATE tasks SET planned_for=?,today_order=id WHERE id IN (1,2,3)",(today.isoformat(),))
+        db.execute("UPDATE tasks SET planned_for=? WHERE id=2",((today-timedelta(days=1)).isoformat(),))
     subprocess.run(command + ["--all-widgets", "--ui-audit", "--quit-after", "120"],
                    env=env, check=True, timeout=135)
     manifest = json.loads((data / "screenshots/audit.json").read_text())
-    assert len(manifest) == 20, f"Incomplete screenshots at scale {scale}: {len(manifest)}"
+    assert len(manifest) == 34, f"Incomplete screenshots at scale {scale}: {len(manifest)}"
     assert all(abs(item["scale"] - scale) < 0.01 for item in manifest), "Unexpected render scale"
     assert all((data / "screenshots" / item["image"]).stat().st_size > 100 for item in manifest)
     for item in manifest:
         if item["image"].startswith("widget-"):
             continue
-        size = (940, 740) if item["image"] in {"timer.png", "tasks.png", "reports.png", "widgets.png", "settings.png", "about.png"} else (760, 540)
+        size = (940, 740) if item["image"] in {"timer.png", "tasks.png", "reports.png", "widgets.png", "settings.png", "about.png", "timer-dark.png", "tasks-dark.png", "reports-dark.png", "settings-dark.png", "tasks-trash.png", "tasks-carry-forward.png", "settings-data.png", "settings-appearance.png", "reports-tasks.png"} else (760, 540)
         assert (item["width"], item["height"]) == tuple(round(n * scale) for n in size), item
-    results.append(dict(scale=scale, captures=len(manifest), directory=str(data / "screenshots")))
+    results.append(dict(scale=scale, captures=len(manifest), directory=str(data / "screenshots"),
+                        executableSha256=hashlib.sha256(args.exe.read_bytes()).hexdigest().upper()))
     print(json.dumps(results[-1]), flush=True)
 
 (output / "results.json").write_text(json.dumps(results, indent=2), encoding="utf-8")

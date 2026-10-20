@@ -30,7 +30,7 @@ assert build["version"] == version
 assert len(exe) <= 12_000_000, "Release executable exceeds 12 MB"
 assert len(source) == build["sourceExecutableBytes"]
 assert hashlib.sha256(source).hexdigest().upper() == build["sourceExecutableSha256"]
-for report in ("release-footprint.json", "release-startup.json"):
+for report in ("release-footprint.json", "release-startup.json", "release-window-startup.json"):
     audit = json.loads((stage / "docs" / report).read_text(encoding="utf-8-sig"))
     assert audit["executableSha256"] == digest, f"Stale release measurements: {report}"
 

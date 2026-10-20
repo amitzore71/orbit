@@ -1,5 +1,27 @@
 # Performance measurements
 
+## Orbit 0.2.0 release — 20 October 2026
+
+The packaged executable is **11,670,016 bytes** with SHA-256 `AB091AADEC257C60DCD0A16D6D4E98276E3851034EA2EF5979664C0AD1BB513B`, uncompressed. `dist/SHA256SUMS.txt` identifies the final portable ZIP and installer. Measurements identify that exact staged executable in [release-footprint.json](release-footprint.json), [release-startup.json](release-startup.json), and [release-window-startup.json](release-window-startup.json).
+
+| Scenario | Mean private commit | Mean total working set |
+|---|---:|---:|
+| Tray idle, fresh process | 3.43 MiB | 20.41 MiB |
+| Tray running, fresh process | 3.36 MiB | 20.39 MiB |
+| Main window paused | 10.21 MiB | 28.36 MiB |
+| Main window running | 10.13 MiB | 28.39 MiB |
+| Main window minimized, running | 10.20 MiB | 28.37 MiB |
+| Main window and all widgets running | 12.25 MiB | 30.91 MiB |
+
+Startup and interaction evidence:
+
+- Warm tray launch to native input-idle: **22.80 ms** median (7 launches, first excluded), effectively at the 0.1.1 median of 23.54 ms. An earlier run of the same executable measured 39.35 ms, so this probe is sensitive to machine state; the final retained run is the release evidence.
+- Warm launch to an externally observed painted, responsive window: **133.98 ms** median and **141.27 ms** p95 over 30 trials (first trial 153.88 ms, excluded from warm statistics). This is inside the median ≤150 ms and p95 ≤300 ms gates for the measured scope.
+- The footprint still meets every empty-fixture private-commit and working-set ceiling in the UI and performance plan.
+- The executable remains under the 12,000,000-byte limit with 329,984 bytes of headroom.
+
+Footprint scenarios use isolated empty databases, two seconds of warm-up, and eight seconds of sampling. The window probe runs at the recorded display scale with an empty database and light appearance. Cold-cache launch, 5,000-task search, input-to-feedback latency, navigation latency, frame timings, a 10-minute tray CPU sample, and the 500-cycle lifecycle soak are **not** measured for 0.2.0. Short CPU samples do not establish zero CPU use, and none of these numbers support a comparative claim against other applications.
+
 ## Orbit 0.1.1 release — 20 October 2026
 
 The default distribution now keeps its executable uncompressed. ZIP and installer downloads remain compressed. This avoids the decompression work and additional private commit observed in the 0.1.0 UPX package; executable compression is available only through `-CompressExecutable`.
@@ -34,7 +56,7 @@ These size measurements predate task analytics and the AboutSlint widget. Curren
 | Uncompressed release | 10,646,016 | 10.65 |
 | Packaged release, UPX 5.2.1 | 4,238,336 | 4.24 |
 
-Removing unused SQLite extensions reduced the uncompressed release from 11,009,536 to 10,646,016 bytes. The packaged EXE uses LZMA executable compression and expands in memory at startup. The 10,000,000-byte packaging limit applies to the distributed EXE. [Build metadata](build-info.json) records both compressed and uncompressed sizes and hashes.
+Removing unused SQLite extensions reduced the uncompressed release from 11,009,536 to 10,646,016 bytes. The packaged EXE uses LZMA executable compression and expands in memory at startup. The historical 10,000,000-byte packaging limit applied to that build; the current limit is 12,000,000 bytes. [Build metadata](build-info.json) records both compressed and uncompressed sizes and hashes.
 
 The compact binary passed all-window startup, Unicode/legacy database preservation, a real 60-second expiry, paused restart recovery, SQLite write-failure recovery, and integrity checks. Packaging verifies restored runtime code/data, unwind tables, relocations, ASLR/NX, native imports, and ZIP equality. Windows icon resources and the DPI manifest were checked separately. Runtime memory measurements below describe the historical uncompressed binary.
 

@@ -62,6 +62,7 @@ pub enum Event {
     Skip,
     Reset,
     Quit,
+    Shutdown,
     ToggleWidget(usize),
     UnlockWidgets,
     ResetWidgets,
@@ -70,10 +71,113 @@ pub enum Event {
     DisplayChanged,
     VisibilityChanged,
     AppearanceChanged,
-    WidgetMoved { index: usize, x: i32, y: i32 },
+    WidgetMoved {
+        index: usize,
+        x: i32,
+        y: i32,
+    },
     Error(String),
+    FileDialog {
+        kind: u32,
+        result: Result<Option<PathBuf>>,
+    },
 }
 pub type EventHandler = Arc<dyn Fn(Event) + Send + Sync>;
+
+/// Read the Windows app theme without a polling thread.
+pub fn prefers_dark() -> bool {
+    let mut value = 1u32;
+    let mut bytes = 4u32;
+    unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            w!("AppsUseLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&mut value as *mut u32).cast()),
+            Some(&mut bytes),
+        ) == ERROR_SUCCESS
+            && value == 0
+    }
+}
+
+/// A native dialog runs on a short-lived STA thread. The caller serializes
+/// dialogs and pauses the timer before opening one.
+pub fn choose_file(kind: u32, owner: Option<isize>, callback: EventHandler) {
+    let handler = callback.clone();
+    if let Err(error) = thread::Builder::new()
+        .name("orbit-file-dialog".into())
+        .spawn(move || {
+            let result = unsafe {
+                (|| -> Result<Option<PathBuf>> {
+                    CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+                        .ok()
+                        .map_err(|e| e.to_string())?;
+                    let result = (|| -> windows::core::Result<Option<PathBuf>> {
+                        let class = if kind == 1 {
+                            &FileOpenDialog
+                        } else {
+                            &FileSaveDialog
+                        };
+                        let dialog: IFileDialog =
+                            CoCreateInstance(class, None, CLSCTX_INPROC_SERVER)?;
+                        dialog.SetOptions(
+                            dialog.GetOptions()?
+                                | FOS_FORCEFILESYSTEM
+                                | if kind == 1 {
+                                    FOS_FILEMUSTEXIST
+                                } else {
+                                    FOS_PATHMUSTEXIST
+                                },
+                        )?;
+                        dialog.SetTitle(&HSTRING::from(if kind == 1 {
+                            "Restore an Orbit backup"
+                        } else if kind == 2 {
+                            "Export focus report"
+                        } else {
+                            "Create an Orbit backup"
+                        }))?;
+                        if kind != 1 {
+                            dialog.SetDefaultExtension(if kind == 2 {
+                                w!("csv")
+                            } else {
+                                w!("db")
+                            })?;
+                            dialog.SetFileName(&HSTRING::from(format!(
+                                "orbit-{}.{}",
+                                SystemTime::now()
+                                    .duration_since(UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                                if kind == 2 { "csv" } else { "db" }
+                            )))?;
+                        }
+                        if let Err(error) = dialog.Show(owner.map(|h| HWND(h as *mut c_void))) {
+                            if error.code().0 as u32 == 0x800704c7 {
+                                return Ok(None);
+                            }
+                            return Err(error);
+                        }
+                        let value = dialog.GetResult()?.GetDisplayName(SIGDN_FILESYSPATH)?;
+                        let path = value.to_string();
+                        CoTaskMemFree(Some(value.0.cast()));
+                        Ok(Some(PathBuf::from(path?)))
+                    })()
+                    .map_err(|e| e.to_string());
+                    CoUninitialize();
+                    result
+                })()
+            };
+            callback(Event::FileDialog { kind, result });
+        })
+    {
+        handler(Event::FileDialog {
+            kind,
+            result: Err(error.to_string()),
+        });
+    }
+}
 enum NativeCommand {
     Hotkeys([String; 3], mpsc::SyncSender<Vec<String>>),
     Tooltip(String),
@@ -349,7 +453,7 @@ unsafe extern "system" fn window_proc(
                 LRESULT(1)
             }
             WM_ENDSESSION if wparam.0 != 0 => {
-                emit(Event::Quit);
+                emit(Event::Shutdown);
                 LRESULT(0)
             }
             WM_ENDSESSION => {
@@ -913,6 +1017,19 @@ pub fn high_contrast() -> bool {
         )
         .is_ok()
             && (value.dwFlags.0 & 1) != 0
+    }
+}
+pub fn reduced_motion() -> bool {
+    let mut enabled = 1i32;
+    unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some((&mut enabled as *mut i32).cast()),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+        .is_ok()
+            && enabled == 0
     }
 }
 pub fn system_colors() -> [u32; 5] {

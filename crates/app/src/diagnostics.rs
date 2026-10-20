@@ -14,10 +14,11 @@ pub fn performance(output: PathBuf) {
             if index == 0 {
                 app.tasks = (1..=5000).map(|id| Task {
                     id, title: format!("Review task {id}: 日本語 notes and planning हिंदी"),
-                    estimate: 3, completed: 0, done: id % 5 == 0,
+                    estimate: 3, completed: 0, done: id % 5 == 0, planned_for: (id % 3 == 0).then(focus_storage::local_date), ..Default::default()
                 }).collect();
                 app.preferences[1].enabled = true;
                 app.create_widget(1);
+                app.main.set_task_view(1);
                 app.refresh_tasks();
                 let mut samples = Vec::new();
                 let mut replacements = 0;
@@ -32,7 +33,11 @@ pub fn performance(output: PathBuf) {
                     }
                     if round > 0 { samples.push(started.elapsed().as_secs_f64() * 1000.); }
                 }
-                *report.borrow_mut() = json!({"tasks":5000,"selectionsPerSample":100,"samplesMs":samples,"modelReplacements":replacements,"wakeups":{}});
+                let mut filter_samples=Vec::new();
+                for query in ["日本語","review","हिंदी","task 99","日本語","review","हिंदी",""] {
+                    let started=std::time::Instant::now();app.task_models.filter(1,query);filter_samples.push(started.elapsed().as_secs_f64()*1000.);
+                }
+                *report.borrow_mut() = json!({"tasks":5000,"selectionsPerSample":100,"samplesMs":samples,"filterSamplesMs":filter_samples,"modelReplacements":replacements,"wakeups":{},"scope":"Task-model selection/filtering only; persistence and frame painting excluded"});
                 app.command(Command::Start);
             } else {
                 let name = ["tasks-page", "timer-page", "mini-visible", "tasks-widget-only"][index - 1];
@@ -62,7 +67,7 @@ pub fn performance(output: PathBuf) {
 /// Capture actual software-rendered windows at two layouts and in high contrast.
 /// Diagnostic-only code and PNG support are absent from ordinary release builds.
 pub fn audit(output: PathBuf) {
-    const SCENARIOS: [(&str, i32, bool, bool); 17] = [
+    const SCENARIOS: &[(&str, i32, bool, bool)] = &[
         ("timer", 0, false, false),
         ("tasks", 1, false, false),
         ("reports", 2, false, false),
@@ -80,6 +85,17 @@ pub fn audit(output: PathBuf) {
         ("tasks-high-contrast", 1, true, true),
         ("reports-high-contrast", 2, true, true),
         ("widgets-high-contrast", 3, true, true),
+        ("timer-dark", 0, false, false),
+        ("timer-dark-compact", 0, true, false),
+        ("tasks-dark", 1, false, false),
+        ("reports-dark", 2, false, false),
+        ("reports-tasks", 2, false, false),
+        ("settings-dark", 4, false, false),
+        ("tasks-trash", 1, false, false),
+        ("tasks-carry-forward", 1, false, false),
+        ("settings-data", 4, false, false),
+        ("settings-appearance", 4, false, false),
+        ("timer-save-blocked", 0, true, false),
     ];
     std::fs::create_dir_all(&output).unwrap();
     let step = Rc::new(Cell::new(0usize));
@@ -98,6 +114,7 @@ pub fn audit(output: PathBuf) {
                             serde_json::to_vec_pretty(&*rows.borrow()).unwrap(),
                         )
                         .unwrap();
+                        app.load_settings();
                         app.quit();
                     });
                     return;
@@ -116,7 +133,17 @@ pub fn audit(output: PathBuf) {
                             (width * scale) as u32,
                             (height * scale) as u32,
                         ));
-                        app.main.set_page(page);
+                        app.timer.settings.appearance=if name.contains("dark") {2} else {1};
+                        app.apply_appearance();
+                        app.main.set_storage_blocked(false);
+                        app.main.set_settings_section(match page {3=>4,5=>6,_=>0});
+                        app.main.set_page(if page==3 || page==5 {4} else {page});
+                        app.main.set_report_task_list(name=="reports-tasks");
+                        app.main.set_task_view(if name=="tasks-trash" {3} else if name=="tasks-carry-forward" {4} else {0});
+                        if name=="settings-data" {app.main.set_settings_section(5);}
+                        if name=="settings-appearance" || name=="settings-dark" {app.main.set_settings_section(2);}
+                        app.refresh_tasks();
+                        if name=="timer-save-blocked" {app.main.set_storage_blocked(true);app.main.set_save_status("Changes are pending. Retry saving before resuming.".into());}
                         app.sync_layout();
                         if page == 2 {
                             app.request_report();
@@ -137,10 +164,16 @@ pub fn audit(output: PathBuf) {
                     let scenario = index / 2;
                     with_app(|app| {
                         let name = SCENARIOS[scenario].0;
+                        if name=="timer-save-blocked" {app.main.set_storage_blocked(true);app.main.set_save_status("Changes are pending. Retry saving before resuming.".into());}
                         rows.borrow_mut().push(snapshot(
                             app.main.window(),
                             &output.join(format!("{name}.png")),
                         ));
+                        if name=="timer-dark" {
+                            for (i,widget) in app.widgets.iter().enumerate() {
+                                if let Some(widget)=widget {rows.borrow_mut().push(snapshot(widget.window(),&output.join(format!("widget-{i}-dark.png"))));}
+                            }
+                        }
                         if scenario == 5 {
                             for (i, widget) in app.widgets.iter().enumerate() {
                                 if let Some(widget) = widget {

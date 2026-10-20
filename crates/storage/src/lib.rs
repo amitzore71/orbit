@@ -23,13 +23,27 @@ const INTERVALS_IN_RANGE: &str = "SELECT session_id,task_id,start_ms,end_ms,acti
     UNION ALL SELECT session_id,task_id,start_ms,end_ms,active_ms FROM intervals INDEXED BY intervals_long_start WHERE end_ms-start_ms>10800000 AND end_ms>=?3 AND start_ms<?2";
 
 pub type Result<T> = std::result::Result<T, String>;
-#[derive(Clone, Debug)]
+mod export;
+#[cfg(test)]
+mod product_tests;
+mod snapshots;
+use snapshots::{
+    backup_path, copy_database, prune_upgrade_backups, snapshot, unique_stamp, validate_backup,
+};
+
+pub fn local_date() -> String {
+    Local::now().date_naive().to_string()
+}
+#[derive(Clone, Debug, Default)]
 pub struct Task {
     pub id: i64,
     pub title: String,
     pub estimate: u32,
     pub completed: u32,
     pub done: bool,
+    pub deleted: bool,
+    pub planned_for: Option<String>,
+    pub today_order: i64,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Period {
@@ -84,6 +98,7 @@ pub struct Loaded {
     pub widgets: [WidgetPreferences; 3],
     pub tasks: Vec<Task>,
     pub recovered: bool,
+    pub last_backup: Option<String>,
 }
 #[derive(Clone)]
 pub enum Operation {
@@ -96,6 +111,11 @@ pub enum Operation {
         title: String,
         estimate: u32,
     },
+    CreateTask {
+        title: String,
+        estimate: u32,
+        today: bool,
+    },
     EditTask {
         id: i64,
         title: String,
@@ -103,6 +123,35 @@ pub enum Operation {
     },
     ToggleTaskDone(i64),
     DeleteTask(i64),
+    RestoreTask(i64),
+    PlanTask {
+        id: i64,
+        today: bool,
+    },
+    MoveTask {
+        id: i64,
+        direction: i32,
+    },
+    Backup(PathBuf),
+    Restore(PathBuf),
+    ReportRange {
+        start: String,
+        end: String,
+    },
+    ExportReport {
+        path: PathBuf,
+        period: Period,
+        offset: i32,
+        start: String,
+        end: String,
+    },
+    SessionDetails {
+        task_id: Option<i64>,
+        period: Period,
+        offset: i32,
+        start: String,
+        end: String,
+    },
     Widget {
         index: usize,
         preferences: WidgetPreferences,
@@ -119,10 +168,16 @@ pub enum Response {
     Saved,
     SettingsSaved(Settings),
     TasksChanged,
+    TaskCreated(Task),
+    TaskDeleted(i64),
     Flushed(Settings),
     Tasks(Vec<Task>),
     Report(Report),
     Today(FocusSummary),
+    BackedUp(PathBuf),
+    Restored(Box<Loaded>),
+    Exported(PathBuf),
+    SessionDetails(Vec<String>),
 }
 type Job = Box<dyn FnOnce(&mut Store) + Send>;
 pub struct Worker {
@@ -178,7 +233,15 @@ impl Worker {
         validate_operation(&operation)?;
         let write = !matches!(
             operation,
-            Operation::Tasks | Operation::Report { .. } | Operation::Today | Operation::Flush
+            Operation::Tasks
+                | Operation::Report { .. }
+                | Operation::Today
+                | Operation::Flush
+                | Operation::Backup(_)
+                | Operation::Restore(_)
+                | Operation::ReportRange { .. }
+                | Operation::ExportReport { .. }
+                | Operation::SessionDetails { .. }
         );
         if write && self.is_blocked() {
             return Err(
@@ -280,7 +343,14 @@ impl Worker {
         let flush = matches!(operation, Operation::Flush);
         let write = !matches!(
             operation,
-            Operation::Tasks | Operation::Report { .. } | Operation::Today
+            Operation::Tasks
+                | Operation::Report { .. }
+                | Operation::Today
+                | Operation::Backup(_)
+                | Operation::Restore(_)
+                | Operation::ReportRange { .. }
+                | Operation::ExportReport { .. }
+                | Operation::SessionDetails { .. }
         );
         let job: Job = Box::new(move |store| {
             if !reserved {
@@ -333,6 +403,9 @@ impl Drop for Worker {
 fn validate_operation(operation: &Operation) -> Result<()> {
     match operation {
         Operation::AddTask { title, estimate }
+        | Operation::CreateTask {
+            title, estimate, ..
+        }
         | Operation::EditTask {
             title, estimate, ..
         } => {
@@ -367,11 +440,20 @@ impl Store {
         let version: u32 = db
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .map_err(|e| e.to_string())?;
-        if version > 3 {
+        if version > 4 {
             return Err(
                 "This database belongs to a newer version of Orbit. Update the app to open it."
                     .into(),
             );
+        }
+        if (1..4).contains(&version)
+            && let Some(path) = db
+                .path()
+                .filter(|p| !p.is_empty() && !p.contains(".orbit-restore-"))
+        {
+            let target = backup_path(std::path::Path::new(path), "upgrade")?;
+            snapshot(&db, &target)?;
+            prune_upgrade_backups(std::path::Path::new(path));
         }
         if version == 0 {
             db.execute_batch("BEGIN IMMEDIATE;
@@ -391,6 +473,52 @@ impl Store {
             // Exceptional legacy intervals remain queryable without scanning normal history.
             db.execute_batch("BEGIN IMMEDIATE; CREATE INDEX intervals_long_start ON intervals(start_ms) WHERE end_ms-start_ms>10800000; PRAGMA user_version=3; COMMIT;")
                 .map_err(|e| e.to_string())?;
+        }
+        if version < 4 {
+            let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
+            tx.execute_batch(
+                "ALTER TABLE tasks ADD COLUMN planned_for TEXT;
+                ALTER TABLE tasks ADD COLUMN today_order INTEGER NOT NULL DEFAULT 0;
+                CREATE INDEX tasks_planning ON tasks(deleted,done,planned_for,today_order,id);
+                PRAGMA user_version=4;",
+            )
+            .map_err(|e| e.to_string())?;
+            // Existing users retain their light appearance after upgrading.
+            if version > 0 {
+                let saved: Option<String> = tx
+                    .query_row("SELECT value FROM meta WHERE key='settings'", [], |r| {
+                        r.get(0)
+                    })
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+                if let Some(saved) = saved {
+                    let mut json: serde_json::Value =
+                        serde_json::from_str(&saved).map_err(|e| e.to_string())?;
+                    if let Some(object) = json.as_object_mut() {
+                        object.entry("appearance").or_insert(serde_json::json!(1));
+                        object
+                            .entry("hotkey_skip")
+                            .or_insert(serde_json::json!("Ctrl+Alt+N"));
+                    }
+                    tx.execute(
+                        "UPDATE meta SET value=? WHERE key='settings'",
+                        [json.to_string()],
+                    )
+                    .map_err(|e| e.to_string())?;
+                } else {
+                    let settings = Settings {
+                        appearance: 1,
+                        hotkey_skip: "Ctrl+Alt+N".into(),
+                        ..Settings::default()
+                    };
+                    tx.execute(
+                        "INSERT INTO meta(key,value) VALUES('settings',?)",
+                        [serde_json::to_string(&settings).map_err(|e| e.to_string())?],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+            }
+            tx.commit().map_err(|e| e.to_string())?;
         }
         Ok(Self {
             db,
@@ -426,15 +554,24 @@ impl Store {
             settings,
             checkpoint,
             widgets,
-            tasks: self.tasks()?,
+            tasks: Self::all_tasks_in(&self.db)?,
             recovered,
+            last_backup: self.get("last_backup")?,
         })
     }
+    #[cfg(test)]
     fn tasks(&self) -> Result<Vec<Task>> {
         Self::tasks_in(&self.db)
     }
+    #[cfg(test)]
     fn tasks_in(db: &Connection) -> Result<Vec<Task>> {
-        let mut query = db.prepare("SELECT t.id,t.title,t.estimate,t.done,(SELECT COUNT(*) FROM sessions s WHERE s.task_id=t.id AND s.completed=1) FROM tasks t WHERE deleted=0 ORDER BY done,id").map_err(|e| e.to_string())?;
+        Ok(Self::all_tasks_in(db)?
+            .into_iter()
+            .filter(|task| !task.deleted)
+            .collect())
+    }
+    fn all_tasks_in(db: &Connection) -> Result<Vec<Task>> {
+        let mut query = db.prepare("SELECT t.id,t.title,t.estimate,t.done,(SELECT COUNT(*) FROM sessions s WHERE s.task_id=t.id AND s.completed=1),t.deleted,t.planned_for,t.today_order FROM tasks t ORDER BY done,today_order,id").map_err(|e| e.to_string())?;
         query
             .query_map([], |row| {
                 Ok(Task {
@@ -443,6 +580,9 @@ impl Store {
                     estimate: row.get(2)?,
                     done: row.get(3)?,
                     completed: row.get(4)?,
+                    deleted: row.get(5)?,
+                    planned_for: row.get(6)?,
+                    today_order: row.get(7)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -454,7 +594,14 @@ impl Store {
         let flush = matches!(operation, Operation::Flush);
         if matches!(
             operation,
-            Operation::Tasks | Operation::Report { .. } | Operation::Today
+            Operation::Tasks
+                | Operation::Report { .. }
+                | Operation::Today
+                | Operation::Backup(_)
+                | Operation::Restore(_)
+                | Operation::ReportRange { .. }
+                | Operation::ExportReport { .. }
+                | Operation::SessionDetails { .. }
         ) {
             return self.execute(operation);
         }
@@ -516,6 +663,22 @@ impl Store {
                 self.put("settings", &settings)?;
                 Ok(Response::SettingsSaved(settings))
             }
+            Operation::CreateTask {
+                title,
+                estimate,
+                today,
+            } => {
+                let title = valid_task(&title, estimate)?;
+                let planned_for = today.then(local_date);
+                self.db.execute("INSERT INTO tasks(title,estimate,planned_for,today_order) VALUES(?1,?2,?3,(SELECT COALESCE(MAX(today_order),0)+1 FROM tasks))",params![title,estimate,planned_for]).map_err(sql)?;
+                Ok(Response::TaskCreated(Task {
+                    id: self.db.last_insert_rowid(),
+                    title: title.into(),
+                    estimate,
+                    planned_for,
+                    ..Default::default()
+                }))
+            }
             Operation::AddTask { title, estimate } => {
                 let title = valid_task(&title, estimate)?;
                 let tx = self.db.transaction().map_err(sql)?;
@@ -556,7 +719,7 @@ impl Store {
                 tx.execute("UPDATE tasks SET deleted=1 WHERE id=?", [id])
                     .map_err(sql)?;
                 tx.commit().map_err(sql)?;
-                Ok(Response::TasksChanged)
+                Ok(Response::TaskDeleted(id))
             }
             Operation::Widget { index, preferences } => {
                 if index >= 3 {
@@ -572,7 +735,107 @@ impl Store {
                 self.put("widgets", &widgets)?;
                 Ok(Response::Saved)
             }
-            Operation::Tasks => Ok(Response::Tasks(self.tasks()?)),
+            Operation::RestoreTask(id) => {
+                self.db
+                    .execute(
+                        "UPDATE tasks SET deleted=0,planned_for=NULL WHERE id=?",
+                        [id],
+                    )
+                    .map_err(sql)?;
+                Ok(Response::TasksChanged)
+            }
+            Operation::PlanTask { id, today } => {
+                let date = today.then(local_date);
+                self.db.execute("UPDATE tasks SET planned_for=?2,today_order=(SELECT COALESCE(MAX(today_order),0)+1 FROM tasks) WHERE id=?1 AND deleted=0 AND done=0", params![id,date]).map_err(sql)?;
+                Ok(Response::TasksChanged)
+            }
+            Operation::MoveTask { id, direction } => {
+                let date = local_date();
+                let tasks: Vec<Task> = Self::all_tasks_in(&self.db)?
+                    .into_iter()
+                    .filter(|t| !t.deleted && !t.done && t.planned_for.as_deref() == Some(&date))
+                    .collect();
+                if let Some(index) = tasks.iter().position(|t| t.id == id) {
+                    let target = (index as i64 + i64::from(direction.signum()))
+                        .clamp(0, tasks.len().saturating_sub(1) as i64)
+                        as usize;
+                    let mut ids: Vec<i64> = tasks.iter().map(|t| t.id).collect();
+                    ids.swap(index, target);
+                    let tx = self.db.transaction().map_err(sql)?;
+                    for (order, id) in ids.iter().enumerate() {
+                        tx.execute(
+                            "UPDATE tasks SET today_order=?2 WHERE id=?1",
+                            params![id, order as i64],
+                        )
+                        .map_err(sql)?;
+                    }
+                    tx.commit().map_err(sql)?;
+                }
+                Ok(Response::TasksChanged)
+            }
+            Operation::Backup(path) => {
+                self.process(Operation::Flush)?;
+                snapshot(&self.db, &path)?;
+                // Backup success is independent of optional display metadata.
+                let _ = self.put("last_backup", &path.display().to_string());
+                Ok(Response::BackedUp(path))
+            }
+            Operation::Restore(path) => {
+                self.process(Operation::Flush)?;
+                let active = PathBuf::from(self.db.path().ok_or("Database path unavailable")?);
+                if path == active {
+                    return Err("Choose a backup, not the open database.".into());
+                }
+                let source =
+                    Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                        .map_err(sql)?;
+                validate_backup(&source)?;
+                let stage = active.with_file_name(format!(".orbit-restore-{}.db", unique_stamp()));
+                let result = (|| {
+                    snapshot(&source, &stage)?;
+                    let candidate = Store::open(stage.clone())?;
+                    let mut settings = candidate.get::<Settings>("settings")?.unwrap_or_default();
+                    settings.autostart = self
+                        .get::<Settings>("settings")?
+                        .unwrap_or_default()
+                        .autostart;
+                    candidate.put("settings", &settings)?;
+                    if let Some(mut checkpoint) = candidate.get::<Checkpoint>("timer")? {
+                        checkpoint.running = false;
+                        candidate.put("timer", &checkpoint)?;
+                    }
+                    candidate.load()?;
+                    let recovery = backup_path(&active, "before-restore")?;
+                    snapshot(&self.db, &recovery)?;
+                    candidate.put("last_backup", &recovery.display().to_string())?;
+                    // SQLite's backup destination transaction atomically replaces the
+                    // database; no live file renames or WAL sidecar manipulation.
+                    copy_database(&candidate.db, &mut self.db)?;
+                    Ok(Response::Restored(Box::new(self.load()?)))
+                })();
+                for suffix in ["", "-wal", "-shm"] {
+                    let _ = std::fs::remove_file(format!("{}{suffix}", stage.display()));
+                }
+                result
+            }
+            Operation::ReportRange { start, end } => {
+                Ok(Response::Report(self.custom_report(&start, &end)?))
+            }
+            Operation::SessionDetails {
+                task_id,
+                period,
+                offset,
+                start,
+                end,
+            } => self.session_details(task_id, period, offset, &start, &end),
+            Operation::ExportReport {
+                path,
+                period,
+                offset,
+                start,
+                end,
+            } => self.export_report(path, period, offset, start, end),
+            Operation::Tasks => Ok(Response::Tasks(Self::all_tasks_in(&self.db)?)),
             Operation::Report { period, offset } => {
                 Ok(Response::Report(self.report(period, offset)?))
             }
@@ -651,7 +914,13 @@ impl Store {
             .iter()
             .map(|d| DayReport {
                 label: d
-                    .format(if dates.len() == 7 { "%a" } else { "%d" })
+                    .format(if dates.len() == 7 {
+                        "%a"
+                    } else if dates.len() > 31 {
+                        "%d %b"
+                    } else {
+                        "%d"
+                    })
                     .to_string(),
                 ..DayReport::default()
             })
@@ -1242,7 +1511,7 @@ mod tests {
         assert_eq!(
             s.db.pragma_query_value::<u32, _>(None, "user_version", |r| r.get(0))
                 .unwrap(),
-            3
+            4
         );
     }
     #[test]

@@ -1,26 +1,28 @@
 # Orbit
 
-An offline Windows focus timer built with Rust and Slint. Includes tasks, focus reports, and three desktop widgets. No account, telemetry, or background service.
+An offline Windows focus timer built with Rust and Slint. Plan today's work, start a focus session, and review your effort in a light, responsive desktop interface. No account, telemetry, or background service.
 
 ## Run
 
 Requires Windows 11 22H2 or newer, x64. Open `orbit.exe` from a portable package or use the per-user installer. Closing the window hides Orbit in the tray; right-click the tray icon to control or quit it.
 
-Data is stored in `%LOCALAPPDATA%\Orbit\orbit.db`. Use `orbit.exe --data-dir "D:\FocusData"` for another location. Existing pre-Orbit databases in `%LOCALAPPDATA%\StillPomodoro\still.db`, or `still.db` in a custom directory, are reused in place. Uninstalling retains your data. Back up the data directory while Orbit is closed.
+Data is stored in `%LOCALAPPDATA%\Orbit\orbit.db`. Use `orbit.exe --data-dir "D:\FocusData"` for another location. Existing pre-Orbit databases in `%LOCALAPPDATA%\StillPomodoro\still.db`, or `still.db` in a custom directory, are reused in place. Uninstalling retains your data. Use **Settings → Data** to create a consistent backup or restore one. Backups pause the timer; restoration replaces local data after creating a recovery copy in the data directory's `backups` folder. Save a copy on another drive to protect against disk failure. Existing backup files are never overwritten.
+
+Version 0.2 migrates existing databases to schema 4 after making an upgrade backup. The latest three automatic upgrade backups are retained; manual and pre-restore backups are retained. Older versions cannot open schema 4. To downgrade, use the pre-upgrade backup with the older application in a separate data directory.
 
 For portable notifications, open **Settings → Notifications** to register the current executable. Repeat after moving it. The installer handles registration automatically. If Windows notifications are unavailable, Orbit uses a tray alert.
 
 ## Use
 
 - **Timer:** Focus, short break, and long break. Defaults are 25/5/15 minutes, with a long break every four completed focus sessions. Sleep and hibernation do not consume time. Automatic starts are off by default.
-- **Tasks:** Add a title and a 1–99 session estimate. Selecting a task affects the next session; an ongoing session keeps its original task. Only finished focus sessions increase completion counts. Skips and resets retain partial focus time. Deleting a task preserves its history.
-- **Reports:** Daily, Monday-based weekly, and calendar-month totals. Focus by task shows time spent, percentage of total focus, and completed sessions, sorted by time spent. Includes partial focus time, deleted task history, and time without a task; excludes pauses and sleep, and uses the current Windows time zone.
-- **Widgets:** Timer ring, today's tasks, and mini timer. Drag a header to move a widget. Configure layering and click-through in Widgets; use **Unlock all widgets** in the tray to recover click-through windows.
-- **Settings:** Session lengths, automatic starts, alarms, volume, notifications, appearance, shortcuts, and opt-in startup. Duration changes apply to the next session.
+- **Tasks:** Plan and order today's tasks, search All active, inspect Completed, recover deleted tasks from Trash, and deliberately carry earlier plans forward. Use **Start focus** for a fresh focus session or **Use next** during a started session/break. Timer offers a task picker and quick-add. A started session keeps its original task. Only finished focus sessions increase completion counts; skips and resets retain partial focus time. Undo and Trash preserve task IDs and history.
+- **Reports:** Daily, Monday-based weekly, monthly, and custom date ranges up to 367 days. Inspect session details by task and export a spreadsheet-safe UTF-8 CSV. Includes partial focus time, deleted task history, and time without a task; excludes pauses and sleep, and uses the current Windows time zone. CSV reports are separate from restorable backups.
+- **Widgets:** Timer ring, today's planned tasks, and mini timer. Drag a header to move a widget. Configure them in **Settings → Widgets**; layering and click-through are under Advanced controls. Use **Unlock all widgets** in the tray to recover click-through windows.
+- **Settings:** Grouped session, sound, appearance, shortcut/startup, widget, data, and About controls. Follow Windows or choose light/dark appearance; Windows high contrast takes precedence. Drafts survive navigation, with explicit Save/Discard. Duration changes apply to the next session.
 
-Default shortcuts: `Ctrl+Alt+P` start/pause, `Ctrl+Alt+O` open, `Ctrl+Alt+N` skip. Change or disable them in Settings.
+Default shortcuts: `Ctrl+Alt+P` start/pause and `Ctrl+Alt+O` open. Skip is disabled for new installations; existing shortcuts are preserved. Record, edit, or disable shortcuts in Settings.
 
-State is saved on transitions. Normal exit saves the session paused; crash recovery restores the last checkpoint paused without crediting unsaved time. A database write failure pauses activity and queues accepted changes for retry. Use a timer control to retry saving, then resume after recovery.
+State is saved on transitions and once a minute while running, with periodic checkpoints coalesced while a save is pending. Normal exit saves the session paused; crash recovery restores the last durable checkpoint paused without crediting unsaved time. A database write failure pauses activity and queues accepted changes for retry. Use **Retry saving**, then explicitly resume after recovery.
 
 ## Build and test
 
@@ -46,7 +48,7 @@ The default release keeps the executable uncompressed for fast startup and low p
 
 Requires Inno Setup 6.7.3 or newer. Use `-SkipInstaller` for a portable ZIP only. Outputs go to `dist`. Dependency notices are assembled from the Cargo registry and committed upstream license texts.
 
-Packaging rejects an EXE over 12,000,000 bytes and verifies native imports, Windows relocations, ASLR/NX flags, executable identity, and ZIP contents. Optional UPX builds additionally verify decompression and restored runtime sections. Use `orbit.exe` inside `dist/Orbit-0.1.1-windows-x64` for the portable build. Files under `target/debug` are development builds.
+Packaging rejects an EXE over 12,000,000 bytes and verifies native imports, Windows relocations, ASLR/NX flags, executable identity, and ZIP contents. Optional UPX builds additionally verify decompression and restored runtime sections. Use `orbit.exe` inside the versioned `dist/Orbit-*-windows-x64` directory for the portable build. Files under `target/debug` are development builds.
 
 The release script tests startup, legacy data preservation, real timer expiry, paused restart, and write-failure recovery against the staged executable before creating the installer. `dist/SHA256SUMS.txt` identifies the final installer and portable ZIP.
 
