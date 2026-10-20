@@ -1,0 +1,74 @@
+{
+  "measuredAt": "2026-10-20T18:41:36.980986+00:00",
+  "executable": "D:\\Ray\\Orbit\\target\\release\\orbit.exe",
+  "executableSha256": "0E16E20064455DF7A51EF298785C7B05143591521991CAE91A663747B6EA3215",
+  "scenarios": [
+    {
+      "scenario": "tray-idle",
+      "privateBytesMean": 258519313,
+      "privateBytesPeak": 319434752,
+      "workingSetBytesMean": 447551351,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 0.7809,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.015,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "tray-running",
+      "privateBytesMean": 262369006,
+      "privateBytesPeak": 320815104,
+      "workingSetBytesMean": 450508526,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 0.9367,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.024,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "main-paused",
+      "privateBytesMean": 265660825,
+      "privateBytesPeak": 339673088,
+      "workingSetBytesMean": 448217770,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 0.2602,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.023,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "main-running",
+      "privateBytesMean": 339364932,
+      "privateBytesPeak": 356773888,
+      "workingSetBytesMean": 471438677,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 21.8623,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.017,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "main-minimized-running",
+      "privateBytesMean": 276446003,
+      "privateBytesPeak": 294002688,
+      "workingSetBytesMean": 465451963,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 0.7808,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.017,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "all-widgets-running",
+      "privateBytesMean": 446366515,
+      "privateBytesPeak": 452440064,
+      "workingSetBytesMean": 653760375,
+      "processCountPeak": 9,
+      "cpuPercentOfOneCore": 28.1612,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.017,
+      "warmupSeconds": 30
+    }
+  ],
+  "note": "Combined private committed bytes and summed working sets of the Rust host and all descendants. Shared pages may be counted more than once in summed working sets. CPU is relative to one logical core; exited child process tails can be missed. Empty isolated databases. No working-set trimming."
+}

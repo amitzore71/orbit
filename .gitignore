@@ -2,6 +2,13 @@
 /dist/
 /artifacts/
 /tools/
+/frontend/node_modules/
+/frontend/.next/
+/frontend/out/
+/frontend/playwright-report/
+/frontend/test-results/
+*.tsbuildinfo
+/crates/app/gen/
 *.db
 *.db-shm
 *.db-wal

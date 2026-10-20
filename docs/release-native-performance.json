@@ -1,0 +1,7 @@
+{
+  "executableSha256": "0E16E20064455DF7A51EF298785C7B05143591521991CAE91A663747B6EA3215",
+  "clickToFeedbackMs": 26.700000002980232,
+  "frameIntervalP95Ms": 16.90000000000009,
+  "frameSamples": 120,
+  "scope": "Real WebView2: DOM click through rendered timer feedback; rAF intervals while focusing. One click sample; excludes physical display latency."
+}

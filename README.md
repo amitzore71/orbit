@@ -1,70 +1,77 @@
 # Orbit
 
-An offline Windows focus timer built with Rust and Slint. Plan today's work, start a focus session, and review your effort in a light, responsive desktop interface. No account, telemetry, or background service.
+A private, offline Windows focus workspace built with **Rust, Next.js, and Tauri 2**. Choose today's work, give it your attention, and see the quiet progress that adds up.
+
+Version 0.3 introduces an orbital timer, a shared Focus / Today workspace, a complete light/dark interface, and purposeful motion across navigation and session changes. Existing tasks, session history, schema 4 databases, backups, shortcuts, and desktop widgets are preserved.
 
 ## Run
 
-Requires Windows 11 22H2 or newer, x64. Open `orbit.exe` from a portable package or use the per-user installer. Closing the window hides Orbit in the tray; right-click the tray icon to control or quit it.
+Requires Windows 11 22H2 or newer, x64, and Microsoft Edge WebView2. Use the portable ZIP or the per-user installer. Closing the main window hides Orbit to the tray; use the tray menu to open, control, or quit it.
 
-Data is stored in `%LOCALAPPDATA%\Orbit\orbit.db`. Use `orbit.exe --data-dir "D:\FocusData"` for another location. Existing pre-Orbit databases in `%LOCALAPPDATA%\StillPomodoro\still.db`, or `still.db` in a custom directory, are reused in place. Uninstalling retains your data. Use **Settings → Data** to create a consistent backup or restore one. Backups pause the timer; restoration replaces local data after creating a recovery copy in the data directory's `backups` folder. Save a copy on another drive to protect against disk failure. Existing backup files are never overwritten.
+The installer checks WebView2 and downloads Microsoft's Evergreen bootstrapper only if needed. For offline setup, download the official [Evergreen standalone x64 installer](https://developer.microsoft.com/microsoft-edge/webview2/), rename it `MicrosoftEdgeWebView2RuntimeInstallerX64.exe`, and place it beside Orbit's installer. Portable users should install WebView2 first. Orbit itself needs no internet connection, account, telemetry, or background service.
 
-Version 0.2 migrates existing databases to schema 4 after making an upgrade backup. The latest three automatic upgrade backups are retained; manual and pre-restore backups are retained. Older versions cannot open schema 4. To downgrade, use the pre-upgrade backup with the older application in a separate data directory.
+## Your work
 
-For portable notifications, open **Settings → Notifications** to register the current executable. Repeat after moving it. The installer handles registration automatically. If Windows notifications are unavailable, Orbit uses a tray alert.
+- **Focus:** timer and Today together. Focus without a task or choose one; a started session keeps its original task while another task can be selected for next time.
+- **Tasks:** Today, All active, Completed, Trash, Unicode search, manual ordering, carry-forward, editing, and recoverable deletion with Undo. Focus completion does not automatically complete a task.
+- **Insights:** daily, weekly, monthly, and custom reports up to 367 days; task/session details; CSV exports that preserve Unicode and neutralize spreadsheet formulas.
+- **Settings:** session durations, automatic starts, sound, appearance, shortcuts, widgets, backups, and restore. Drafts survive navigation; Save and Discard are explicit.
+- **Widgets:** timer ring, Today's tasks, and mini timer. Drag their headers; layering and click-through are under Advanced controls. Use **Unlock all widgets** in the tray to recover click-through windows.
 
-## Use
+Defaults are 25/5/15 minutes, a long break every four completed focus sessions, and no automatic starts. Sleep does not count as focus. Global shortcuts remain `Ctrl+Alt+P` for start/pause and `Ctrl+Alt+O` to open Orbit; Skip is disabled by default.
 
-- **Timer:** Focus, short break, and long break. Defaults are 25/5/15 minutes, with a long break every four completed focus sessions. Sleep and hibernation do not consume time. Automatic starts are off by default.
-- **Tasks:** Plan and order today's tasks, search All active, inspect Completed, recover deleted tasks from Trash, and deliberately carry earlier plans forward. Use **Start focus** for a fresh focus session or **Use next** during a started session/break. Timer offers a task picker and quick-add. A started session keeps its original task. Only finished focus sessions increase completion counts; skips and resets retain partial focus time. Undo and Trash preserve task IDs and history.
-- **Reports:** Daily, Monday-based weekly, monthly, and custom date ranges up to 367 days. Inspect session details by task and export a spreadsheet-safe UTF-8 CSV. Includes partial focus time, deleted task history, and time without a task; excludes pauses and sleep, and uses the current Windows time zone. CSV reports are separate from restorable backups.
-- **Widgets:** Timer ring, today's planned tasks, and mini timer. Drag a header to move a widget. Configure them in **Settings → Widgets**; layering and click-through are under Advanced controls. Use **Unlock all widgets** in the tray to recover click-through windows.
-- **Settings:** Grouped session, sound, appearance, shortcut/startup, widget, data, and About controls. Follow Windows or choose light/dark appearance; Windows high contrast takes precedence. Drafts survive navigation, with explicit Save/Discard. Duration changes apply to the next session.
+## Your data
 
-Default shortcuts: `Ctrl+Alt+P` start/pause and `Ctrl+Alt+O` open. Skip is disabled for new installations; existing shortcuts are preserved. Record, edit, or disable shortcuts in Settings.
+The database remains `%LOCALAPPDATA%\Orbit\orbit.db`. `orbit.exe --data-dir "D:\FocusData"` selects another location. Legacy `%LOCALAPPDATA%\StillPomodoro\still.db`, or `still.db` in a custom directory, is reused in place. Uninstalling retains your data. WebView cache files are stored separately under the data directory's `webview` folder.
 
-State is saved on transitions and once a minute while running, with periodic checkpoints coalesced while a save is pending. Normal exit saves the session paused; crash recovery restores the last durable checkpoint paused without crediting unsaved time. A database write failure pauses activity and queues accepted changes for retry. Use **Retry saving**, then explicitly resume after recovery.
+**Settings → Data** creates consistent backups or restores them after an explicit confirmation and a pre-restore recovery copy. Backups and restoration pause the timer. CSV exports are not restorable backups. Existing schema-4 data needs no new migration in 0.3; older schema upgrades still create an automatic backup first.
 
-## Build and test
+State is persisted on transitions and once a minute during running sessions. A write failure pauses activity and retains accepted changes. Choose **Retry saving**, then explicitly resume. Normal exit saves paused; crash recovery restores the last durable checkpoint paused without crediting time spent away.
 
-Requires stable Rust MSVC and Visual Studio C++ Build Tools with the Windows SDK. Tested with Rust 1.98.1. Python 3.11+ is used by the packaging and audit scripts; resource monitoring also requires `psutil`.
+## Develop
+
+Requires Node.js 22+, pnpm 10, stable Rust MSVC, Visual Studio C++ Build Tools, and the Windows SDK.
 
 ```powershell
-git clone https://github.com/amitzore71/orbit.git
-cd orbit
-cargo test --workspace --locked
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend dev
+```
+
+In a second terminal:
+
+```powershell
+cargo run -p orbit --no-default-features --locked
+```
+
+Production builds contain the static frontend and do not launch a Node server:
+
+```powershell
+pnpm --dir frontend build
 cargo build --release --locked
 .\target\release\orbit.exe
 ```
 
-The default build uses Slint's software renderer and accessibility support. The MSVC CRT is linked statically; no Visual C++ redistributable is required. The release profile optimizes for size with LTO. Optional comparisons: `--features gpu` for FemtoVG/OpenGL, or `--profile release-speed` for speed optimization.
+Checks:
+
+```powershell
+cargo test --workspace --locked
+pnpm --dir frontend typecheck
+pnpm --dir frontend test
+pnpm --dir frontend exec playwright install chromium
+pnpm --dir frontend test:e2e
+node frontend/tests/native-ui.mjs
+```
 
 ## Package
 
-The default release keeps the executable uncompressed for fast startup and low private memory. ZIP and installer compression still reduce download size. Optional executable compression requires UPX 5.2.1 and `-CompressExecutable`; it increases startup work and runtime private memory.
-
 ```powershell
-.\scripts\Build-Release.ps1 -InnoCompiler "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+.\scripts\Build-Release.ps1
 ```
 
-Requires Inno Setup 6.7.3 or newer. Use `-SkipInstaller` for a portable ZIP only. Outputs go to `dist`. Dependency notices are assembled from the Cargo registry and committed upstream license texts.
+Requires Python 3.11+ with `psutil` and Inno Setup 6.7.3+. Use `-InnoCompiler` for a custom compiler or `-SkipInstaller` for the portable ZIP. The script builds the frontend and Rust host, checks persistence/legacy data, assembles dependency/font notices, measures the full process tree and interactive startup, verifies the archive, and writes SHA-256 sums to `dist`.
 
-Packaging rejects an EXE over 12,000,000 bytes and verifies native imports, Windows relocations, ASLR/NX flags, executable identity, and ZIP contents. Optional UPX builds additionally verify decompression and restored runtime sections. Use `orbit.exe` inside the versioned `dist/Orbit-*-windows-x64` directory for the portable build. Files under `target/debug` are development builds.
+See [desktop architecture](docs/DESKTOP-ARCHITECTURE.md), [release validation](docs/RELEASE-VALIDATION.md), and [performance measurements](docs/PERFORMANCE.md) for state ownership, checks, measured tradeoffs, and remaining manual acceptance work. Historical 0.1/0.2 results remain available in the other documents.
 
-The release script tests startup, legacy data preservation, real timer expiry, paused restart, and write-failure recovery against the staged executable before creating the installer. `dist/SHA256SUMS.txt` identifies the final installer and portable ZIP.
+## License
 
-## Verification
-
-[Validation](docs/VALIDATION.md) lists automated checks and manual desktop scenarios. [Performance](docs/PERFORMANCE.md) records footprint and task-selection benchmarks; [stability](docs/STABILITY.md) records fault injection and native resource stress. Results identify the binaries measured and are not guarantees for later builds.
-
-## Source layout
-
-- `crates/focus-core`: deterministic timer with an injected clock.
-- `crates/storage`: SQLite worker, bounded persistence queue, reports.
-- `crates/platform-win`: Windows tray, shortcuts, audio, notifications, and window integration.
-- `crates/app`: shared state, Slint interface, and widgets.
-
-## Licenses
-
-Application code is [MIT licensed](LICENSE). Packaged dependency license texts are in `THIRD-PARTY-NOTICES.txt`.
-
-The About page displays the standard AboutSlint attribution widget. Slint is distributed under its Royalty-free Desktop, Mobile, and Web Applications License 2.0; its license text is included in the dependency notices.
+Orbit is [MIT licensed](LICENSE). Tauri, Next.js, React, Motion, Phosphor icons, Geist fonts, and transitive dependencies retain their own licenses in the packaged `THIRD-PARTY-NOTICES.txt`. WebView2 is a separately installed Microsoft runtime.

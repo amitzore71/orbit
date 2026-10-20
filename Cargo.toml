@@ -1,9 +1,9 @@
 [workspace]
-members = ["crates/focus-core", "crates/storage", "crates/platform-win", "crates/app"]
+members = ["crates/focus-core", "crates/storage", "crates/platform-win", "crates/app-runtime", "crates/app"]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.90"
 license = "MIT"

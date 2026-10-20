@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Orbit",
+  "version": "0.3.0",
+  "identifier": "Orbit.Pomodoro.Desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../../frontend dev",
+    "beforeBuildCommand": "pnpm --dir ../../frontend build",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../../frontend/out"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["assets/orbit.ico"],
+    "shortDescription": "A quieter space for your best work",
+    "windows": {"webviewInstallMode": {"type": "downloadBootstrapper"}}
+  }
+}

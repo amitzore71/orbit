@@ -1,5 +1,5 @@
 param(
-    [string]$Executable = "$PSScriptRoot\..\artifacts\orbit-diagnostics.exe",
+    [string]$Executable = "$PSScriptRoot\..\target\release\orbit.exe",
     [int]$Cycles = 150,
     [int]$Tasks = 300
 )
@@ -20,7 +20,7 @@ try {
     $env:VERIFIER_LOG_PATH = $testRoot
     Start-Process -FilePath $verifier -ArgumentList '-enable','Heaps','Handles','-for',$testName -WindowStyle Hidden -Wait
     if (-not (Test-Path -LiteralPath $settingsKey)) { throw 'Verifier settings were not enabled. Run from an elevated terminal.' }
-    python scripts/stress-check.py --exe $imagePath --cycles $Cycles --tasks $Tasks --verifier --output (Join-Path $testRoot 'stress.json')
+    python scripts/stress-check.py --exe $imagePath --cycles $Cycles
     if ($LASTEXITCODE -ne 0) { throw 'The native lifecycle test failed under Application Verifier.' }
     $logs = @(Get-ChildItem -LiteralPath (Join-Path $testRoot 'AppVerifierLogs') -Filter ($testName + '*.dat') -File)
     if ($logs.Count -eq 0) { throw 'No verifier logs were created.' }

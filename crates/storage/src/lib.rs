@@ -157,6 +157,7 @@ pub enum Operation {
         preferences: WidgetPreferences,
     },
     Tasks,
+    Reload,
     Report {
         period: Period,
         offset: i32,
@@ -176,6 +177,7 @@ pub enum Response {
     Today(FocusSummary),
     BackedUp(PathBuf),
     Restored(Box<Loaded>),
+    Reloaded(Box<Loaded>),
     Exported(PathBuf),
     SessionDetails(Vec<String>),
 }
@@ -234,6 +236,7 @@ impl Worker {
         let write = !matches!(
             operation,
             Operation::Tasks
+                | Operation::Reload
                 | Operation::Report { .. }
                 | Operation::Today
                 | Operation::Flush
@@ -344,6 +347,7 @@ impl Worker {
         let write = !matches!(
             operation,
             Operation::Tasks
+                | Operation::Reload
                 | Operation::Report { .. }
                 | Operation::Today
                 | Operation::Backup(_)
@@ -595,6 +599,7 @@ impl Store {
         if matches!(
             operation,
             Operation::Tasks
+                | Operation::Reload
                 | Operation::Report { .. }
                 | Operation::Today
                 | Operation::Backup(_)
@@ -626,6 +631,7 @@ impl Store {
     fn execute(&mut self, operation: Operation) -> Result<Response> {
         let sql = |e: rusqlite::Error| e.to_string();
         match operation {
+            Operation::Reload => self.load().map(|v| Response::Reloaded(Box::new(v))),
             Operation::Transition {
                 effects,
                 checkpoint,

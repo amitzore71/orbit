@@ -6,22 +6,20 @@ license.workspace = true
 build = "build.rs"
 
 [features]
-default = []
-gpu = ["slint/renderer-femtovg"]
-diagnostics = ["dep:png"]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
 focus-core = { path = "../focus-core" }
 focus-storage = { path = "../storage" }
 platform-win = { path = "../platform-win" }
+orbit-runtime = { path = "../app-runtime" }
+serde.workspace = true
 serde_json.workspace = true
-slint = { version = "~1.18.1", default-features = false, features = ["std", "compat-1-18", "backend-winit", "renderer-software", "raw-window-handle-06", "accessibility"] }
-raw-window-handle = "0.6"
-png = { version = "0.18", optional = true }
+tauri = { version = "2", features = [] }
 
 [build-dependencies]
-slint-build = "~1.18.1"
-winresource = "0.1"
+tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
 rusqlite = { version = "0.38", default-features = false, features = ["bundled"] }

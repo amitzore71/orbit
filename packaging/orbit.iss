@@ -1,6 +1,6 @@
 #define AppName "Orbit"
 #ifndef AppVersion
-#define AppVersion "0.2.0"
+#define AppVersion "0.3.0"
 #endif
 #define AppExeName "orbit.exe"
 
@@ -48,6 +48,38 @@ Type: files; Name: "{app}\still-pomodoro.exe"
 Type: files; Name: "{autoprograms}\Still Pomodoro.lnk"
 
 [Code]
+function HasWebView2: Boolean;
+var
+  Version: String;
+begin
+  Result := (RegQueryStringValue(HKLM32, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKCU, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0'));
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Code: Integer;
+  RuntimeInstaller: String;
+begin
+  Result := '';
+  if HasWebView2 then Exit;
+  RuntimeInstaller := ExpandConstant('{src}\MicrosoftEdgeWebView2RuntimeInstallerX64.exe');
+  if not FileExists(RuntimeInstaller) then begin
+    try
+      DownloadTemporaryFile('https://go.microsoft.com/fwlink/p/?LinkId=2124703', 'MicrosoftEdgeWebview2Setup.exe', '', nil);
+      RuntimeInstaller := ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe');
+    except
+      Result := 'Orbit needs Microsoft Edge WebView2. Install the Evergreen x64 runtime, or place MicrosoftEdgeWebView2RuntimeInstallerX64.exe beside this installer for offline setup, then retry.';
+      Exit;
+    end;
+  end;
+  if not Exec(RuntimeInstaller, '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, Code) then begin
+    Result := 'WebView2 could not be installed. Install Microsoft Edge WebView2 and retry.';
+    Exit;
+  end;
+  if not HasWebView2 then Result := 'WebView2 setup has not completed. Complete its installation and retry Orbit setup.';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   PreviousCommand: String;

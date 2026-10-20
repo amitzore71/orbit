@@ -1,89 +1,74 @@
-﻿{
-    "measuredAt":  "2026-10-20T18:23:28.1331650+05:30",
-    "os":  "Microsoft Windows NT 10.0.26300.0",
-    "logicalProcessors":  16,
-    "executable":  "D:\\Ray\\Orbit\\dist\\Orbit-0.2.0-windows-x64\\orbit.exe",
-    "executableBytes":  11670016,
-    "executableSha256":  "AB091AADEC257C60DCD0A16D6D4E98276E3851034EA2EF5979664C0AD1BB513B",
-    "note":  "CPU uses GetProcessTimes directly and is relative to one logical core; zero means below the accounting resolution during this sample. QueryProcessCycleTime deltas are also recorded. Private bytes are committed private memory; working set includes shared resident pages. Private working set uses QueryWorkingSet non-shared pages. No working-set trimming is performed. Each scenario uses an empty isolated database. Input-idle is not first paint.",
-    "scenarios":  [
-                      {
-                          "scenario":  "tray-idle",
-                          "privateBytesMean":  3592192,
-                          "privateBytesPeak":  3592192,
-                          "workingSetBytesMean":  21401600,
-                          "privateWorkingSetBytesMean":  2756608,
-                          "cpuPercentOfOneCore":  0,
-                          "cpuMilliseconds":  0,
-                          "cpuCycles":  0,
-                          "sampleSeconds":  8,
-                          "warmupSeconds":  2,
-                          "startupToNativeInputIdleMs":  111.9758
-                      },
-                      {
-                          "scenario":  "tray-running",
-                          "privateBytesMean":  3526656,
-                          "privateBytesPeak":  3526656,
-                          "workingSetBytesMean":  21381120,
-                          "privateWorkingSetBytesMean":  2699264,
-                          "cpuPercentOfOneCore":  0,
-                          "cpuMilliseconds":  0,
-                          "cpuCycles":  0,
-                          "sampleSeconds":  8,
-                          "warmupSeconds":  2,
-                          "startupToNativeInputIdleMs":  45.7995
-                      },
-                      {
-                          "scenario":  "main-paused",
-                          "privateBytesMean":  10702848,
-                          "privateBytesPeak":  10702848,
-                          "workingSetBytesMean":  29741056,
-                          "privateWorkingSetBytesMean":  9584640,
-                          "cpuPercentOfOneCore":  0,
-                          "cpuMilliseconds":  0,
-                          "cpuCycles":  0,
-                          "sampleSeconds":  8,
-                          "warmupSeconds":  2,
-                          "startupToNativeInputIdleMs":  45.538700000000006
-                      },
-                      {
-                          "scenario":  "main-running",
-                          "privateBytesMean":  10622464,
-                          "privateBytesPeak":  10731520,
-                          "workingSetBytesMean":  29767168,
-                          "privateWorkingSetBytesMean":  9573888,
-                          "cpuPercentOfOneCore":  0.1933,
-                          "cpuMilliseconds":  15.625,
-                          "cpuCycles":  70720908,
-                          "sampleSeconds":  8,
-                          "warmupSeconds":  2,
-                          "startupToNativeInputIdleMs":  55.426700000000004
-                      },
-                      {
-                          "scenario":  "main-minimized-running",
-                          "privateBytesMean":  10690560,
-                          "privateBytesPeak":  10690560,
-                          "workingSetBytesMean":  29749248,
-                          "privateWorkingSetBytesMean":  9560064,
-                          "cpuPercentOfOneCore":  0,
-                          "cpuMilliseconds":  0,
-                          "cpuCycles":  1985391,
-                          "sampleSeconds":  8,
-                          "warmupSeconds":  2,
-                          "startupToNativeInputIdleMs":  58.115300000000005
-                      },
-                      {
-                          "scenario":  "all-widgets-running",
-                          "privateBytesMean":  12847104,
-                          "privateBytesPeak":  13012992,
-                          "workingSetBytesMean":  32408576,
-                          "privateWorkingSetBytesMean":  11781632,
-                          "cpuPercentOfOneCore":  1.9285,
-                          "cpuMilliseconds":  156.25,
-                          "cpuCycles":  119920645,
-                          "sampleSeconds":  8,
-                          "warmupSeconds":  2,
-                          "startupToNativeInputIdleMs":  54.1573
-                      }
-                  ]
+{
+  "measuredAt": "2026-10-20T18:41:36.980986+00:00",
+  "executable": "D:\\Ray\\Orbit\\target\\release\\orbit.exe",
+  "executableSha256": "0E16E20064455DF7A51EF298785C7B05143591521991CAE91A663747B6EA3215",
+  "scenarios": [
+    {
+      "scenario": "tray-idle",
+      "privateBytesMean": 258519313,
+      "privateBytesPeak": 319434752,
+      "workingSetBytesMean": 447551351,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 0.7809,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.015,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "tray-running",
+      "privateBytesMean": 262369006,
+      "privateBytesPeak": 320815104,
+      "workingSetBytesMean": 450508526,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 0.9367,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.024,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "main-paused",
+      "privateBytesMean": 265660825,
+      "privateBytesPeak": 339673088,
+      "workingSetBytesMean": 448217770,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 0.2602,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.023,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "main-running",
+      "privateBytesMean": 339364932,
+      "privateBytesPeak": 356773888,
+      "workingSetBytesMean": 471438677,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 21.8623,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.017,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "main-minimized-running",
+      "privateBytesMean": 276446003,
+      "privateBytesPeak": 294002688,
+      "workingSetBytesMean": 465451963,
+      "processCountPeak": 7,
+      "cpuPercentOfOneCore": 0.7808,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.017,
+      "warmupSeconds": 30
+    },
+    {
+      "scenario": "all-widgets-running",
+      "privateBytesMean": 446366515,
+      "privateBytesPeak": 452440064,
+      "workingSetBytesMean": 653760375,
+      "processCountPeak": 9,
+      "cpuPercentOfOneCore": 28.1612,
+      "sampleSeconds": 30,
+      "actualSampleSeconds": 30.017,
+      "warmupSeconds": 30
+    }
+  ],
+  "note": "Combined private committed bytes and summed working sets of the Rust host and all descendants. Shared pages may be counted more than once in summed working sets. CPU is relative to one logical core; exited child process tails can be missed. Empty isolated databases. No working-set trimming."
 }

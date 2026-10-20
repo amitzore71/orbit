@@ -1,11 +1,13 @@
 {
   "application": "Orbit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "executable": "orbit.exe",
-  "executableBytes": 11670016,
-  "executableSha256": "AB091AADEC257C60DCD0A16D6D4E98276E3851034EA2EF5979664C0AD1BB513B",
+  "executableBytes": 4173312,
+  "executableSha256": "0E16E20064455DF7A51EF298785C7B05143591521991CAE91A663747B6EA3215",
   "compression": "none",
-  "sourceExecutableBytes": 11670016,
-  "sourceExecutableSha256": "AB091AADEC257C60DCD0A16D6D4E98276E3851034EA2EF5979664C0AD1BB513B",
-  "historicalAuditSha256": "4E0ACF809C90E7EA291F53514A20229D3F48065940AF9D7D920443E6C7271F26"
+  "sourceExecutableBytes": 4173312,
+  "sourceExecutableSha256": "0E16E20064455DF7A51EF298785C7B05143591521991CAE91A663747B6EA3215",
+  "frontend": "Next.js static export",
+  "host": "Tauri 2",
+  "sharedRuntime": "Microsoft Edge WebView2"
 }

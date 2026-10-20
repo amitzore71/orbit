@@ -17,5 +17,5 @@ info = dict(application="Orbit", version=version, executable="orbit.exe", execut
             executableSha256=hashlib.sha256(exe).hexdigest().upper(),
             compression=args.compression, sourceExecutableBytes=len(source),
             sourceExecutableSha256=hashlib.sha256(source).hexdigest().upper(),
-            historicalAuditSha256=json.loads((root / "docs/footprint.json").read_text(encoding="utf-8"))["executableSha256"])
+            frontend="Next.js static export", host="Tauri 2", sharedRuntime="Microsoft Edge WebView2")
 (root / "docs/build-info.json").write_text(json.dumps(info, indent=2), encoding="utf-8", newline="\n")

@@ -1,3 +1,14 @@
+# Orbit 0.3.0 — 21 October 2026
+
+- Replaces Slint with a bundled Next.js / React interface in Tauri 2. Production builds embed static assets and run without a Node server or internet connection.
+- Combines the orbital timer and Today plan in one Focus workspace; redesigns Tasks, Insights, Settings, and all three desktop widgets.
+- Adds shared motion primitives, spring navigation, animated session progress and reports, matching light/dark appearance, reduced motion, and high-contrast support.
+- Extracts a UI-independent serialized Rust runtime. Timer truth, SQLite safety, Windows integration, schema 4, legacy/custom paths, and stable task attribution remain in Rust.
+- Uses typed IPC and string IDs; separates timer events from application changes and preserves pending-vs-durable error handling.
+- Retains installer/notification identity and close-to-tray behavior. Adds WebView2 prerequisite handling, local font assets/notices, whole-process-tree resource measurements, and an interactive startup probe.
+
+Validation and measurement scope are recorded in DESKTOP-ARCHITECTURE.md and RELEASE-VALIDATION.md. Historical release records follow.
+
 # Orbit 0.2.0 — 20 October 2026
 
 Orbit 0.2 adds a quieter light/dark interface and a complete task-to-focus workflow while retaining the native Rust/Slint software renderer.

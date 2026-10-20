@@ -1,0 +1,19 @@
+{
+  "measuredAt": "2026-10-20T18:45:39.508634+00:00",
+  "executable": "D:\\Ray\\Orbit\\target\\release\\orbit.exe",
+  "executableSha256": "0E16E20064455DF7A51EF298785C7B05143591521991CAE91A663747B6EA3215",
+  "scenarios": [
+    {
+      "scenario": "tray-running-10min",
+      "privateBytesMean": 264764967,
+      "privateBytesPeak": 350666752,
+      "workingSetBytesMean": 456899488,
+      "processCountPeak": 8,
+      "cpuPercentOfOneCore": 0.8229,
+      "sampleSeconds": 600,
+      "actualSampleSeconds": 600.018,
+      "warmupSeconds": 15
+    }
+  ],
+  "note": "Combined private committed bytes and summed working sets of the Rust host and all descendants. Shared pages may be counted more than once in summed working sets. CPU is relative to one logical core; exited child process tails can be missed. Empty isolated databases. No working-set trimming."
+}

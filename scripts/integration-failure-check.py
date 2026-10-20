@@ -26,9 +26,13 @@ with sqlite3.connect(data / "orbit.db") as db:
         focus_minutes=1, volume=0, notifications=False, hotkey_toggle="", hotkey_show="", hotkey_skip="")),))
     db.executescript("""CREATE TRIGGER deny_checkpoint BEFORE INSERT ON meta WHEN NEW.key='timer'
                        BEGIN SELECT RAISE(ABORT,'Injected write failure'); END;""")
-proc = subprocess.Popen(args("--running", "--quit-after", "5"))
+proc = subprocess.Popen(args("--running", "--startup-probe", "--quit-after", "12"))
 try:
-    time.sleep(1)
+    deadline=time.monotonic()+10
+    while not (data / 'startup.json').exists():
+        if proc.poll() is not None or time.monotonic()>deadline:
+            raise RuntimeError('Orbit did not render its initial post-start snapshot.')
+        time.sleep(.05)
     assert proc.poll() is None
     private = psutil.Process(proc.pid).memory_info().private
     with sqlite3.connect(data / "orbit.db") as db:
@@ -49,11 +53,14 @@ with sqlite3.connect(data / "orbit.db") as db:
 # Terminate a genuinely running process after its Start checkpoint is durable.
 proc = subprocess.Popen(args("--running", "--quit-after", "20"))
 try:
-    time.sleep(2)
-    assert proc.poll() is None
-    with sqlite3.connect(data / "orbit.db") as db:
-        crashed = json.loads(db.execute("SELECT value FROM meta WHERE key='timer'").fetchone()[0])
-        assert crashed["running"] is True
+    deadline=time.monotonic()+10
+    while True:
+        assert proc.poll() is None
+        with sqlite3.connect(data / "orbit.db") as db:
+            crashed = json.loads(db.execute("SELECT value FROM meta WHERE key='timer'").fetchone()[0])
+        if crashed['running']:break
+        if time.monotonic()>deadline:raise RuntimeError('Start checkpoint was not durable.')
+        time.sleep(.05)
     proc.kill()
     proc.wait(timeout=10)
 finally:

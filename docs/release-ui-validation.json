@@ -1,0 +1,44 @@
+{
+  "executableSha256": "0E16E20064455DF7A51EF298785C7B05143591521991CAE91A663747B6EA3215",
+  "checks": {
+    "native-ui-check": {
+      "dataDirectory": "D:\\Ray\\Orbit\\artifacts\\native-ui-1792521349250",
+      "realRustBridge": true,
+      "realWebView2": true,
+      "unicodeTasks": true,
+      "taskBinding": true,
+      "allWidgets": true,
+      "widgetCycles": 50,
+      "closeToTray": true,
+      "settingsSave": true,
+      "pathInjectionDenied": true,
+      "pageErrors": [],
+      "logs": "[1021/000628.874:ERROR:ui\\gfx\\win\\window_impl.cc:172] Failed to unregister class Chrome_WidgetWin_0. Error = 1412\r\n"
+    },
+    "integration-check": {
+      "backgroundExpiry": true,
+      "completedSessions": 1,
+      "creditedFocusMs": 60000,
+      "pausedRestart": true,
+      "realExpiryRunSeconds": 65.517,
+      "dataDirectory": "D:\\Ray\\Orbit\\artifacts\\integration-pzm_6dah"
+    },
+    "integration-failure-check": {
+      "sqliteFailurePausedTimer": true,
+      "recoveredCheckpoint": true,
+      "creditedMs": 0,
+      "realProcessTerminationPausedRestore": true,
+      "sqliteIntegrity": "ok",
+      "privateBytesDuringFailure": 14524416
+    },
+    "checkpoint-recovery-check": {
+      "executableSha256": "0E16E20064455DF7A51EF298785C7B05143591521991CAE91A663747B6EA3215",
+      "realPeriodicCheckpoint": true,
+      "abruptTerminationRestoredPaused": true,
+      "creditedFocusMs": 60012,
+      "duplicateCredit": false,
+      "sqliteIntegrity": "ok",
+      "dataDirectory": "D:\\Ray\\Orbit\\artifacts\\checkpoint-recovery-1792521378889419400"
+    }
+  }
+}
