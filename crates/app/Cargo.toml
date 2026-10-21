@@ -11,7 +11,6 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
 focus-core = { path = "../focus-core" }
-focus-storage = { path = "../storage" }
 platform-win = { path = "../platform-win" }
 orbit-runtime = { path = "../app-runtime" }
 serde.workspace = true
@@ -20,6 +19,3 @@ tauri = { version = "2", features = [] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
-
-[dev-dependencies]
-rusqlite = { version = "0.38", default-features = false, features = ["bundled"] }

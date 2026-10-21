@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowDown, ArrowLeft, ArrowRight, CalendarBlank, ArrowUpRight, X } from '@phosphor-icons/react';
+import { ArrowDown, ArrowLeft, ArrowRight, CalendarBlank, ArrowUpRight } from '@phosphor-icons/react';
 import { command, chooseFile, normalizeError } from '@/lib/bridge';
 import { defaultQuery, duration, type Report, type ReportQuery } from '@/lib/protocol';
 import type { OrbitState } from '@/lib/use-orbit';

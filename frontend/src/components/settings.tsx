@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { SpeakerHigh, ArrowDown, ArrowUp, FolderOpen, ArrowCounterClockwise, Keyboard, Check, ArrowSquareOut } from '@phosphor-icons/react';
+import { SpeakerHigh, ArrowDown, ArrowUp, FolderOpen, ArrowCounterClockwise, Keyboard, Check } from '@phosphor-icons/react';
 import type { OrbitState } from '@/lib/use-orbit';
 import { motionPreference, normalizeSettings, type Settings } from '@/lib/protocol';
 import { adapter, command, chooseFile, normalizeError, windowAction } from '@/lib/bridge';

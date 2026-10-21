@@ -1,13 +1,13 @@
 'use client';
 import { motion } from 'motion/react';
 import { Pause, Play, ArrowCounterClockwise, SkipForward, ArrowUpRight, CaretDown, Check } from '@phosphor-icons/react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { OrbitState } from '@/lib/use-orbit';
 import type { Mode, Task } from '@/lib/protocol';
 import { useLiveTimer } from '@/lib/use-orbit';
 import { useExperience } from '@/lib/experience';
 import { useDismissable } from '@/lib/use-dismissable';
-import { duration, timeLabel } from '@/lib/protocol';
+import { timeLabel } from '@/lib/protocol';
 import { Button, IconButton } from './ui';
 const modes: [Mode, string][] = [['Focus', 'Focus'], ['ShortBreak', 'Short break'], ['LongBreak', 'Long break']];
 

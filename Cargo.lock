@@ -2154,10 +2154,8 @@ name = "orbit"
 version = "0.3.1"
 dependencies = [
  "focus-core",
- "focus-storage",
  "orbit-runtime",
  "platform-win",
- "rusqlite",
  "serde",
  "serde_json",
  "tauri",

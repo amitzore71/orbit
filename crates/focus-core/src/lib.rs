@@ -185,10 +185,6 @@ pub struct Snapshot {
     pub started: bool,
 }
 impl Snapshot {
-    pub fn time_label(&self) -> String {
-        let seconds = self.remaining_ms.div_ceil(1000);
-        format!("{:02}:{:02}", seconds / 60, seconds % 60)
-    }
     pub fn progress(&self) -> f32 {
         1.0 - self.remaining_ms as f32 / self.total_ms.max(1) as f32
     }

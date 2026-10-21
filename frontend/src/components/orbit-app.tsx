@@ -1,6 +1,6 @@
 'use client';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
-import { CircleDashed, ListChecks, ChartBar, SlidersHorizontal, ArrowUpRight, Minus, X, LockSimple, ArrowRight, WarningCircle, ArrowCounterClockwise, CheckCircle } from '@phosphor-icons/react';
+import { CircleDashed, ListChecks, ChartBar, SlidersHorizontal, ArrowUpRight, Minus, X, LockSimple, WarningCircle, ArrowCounterClockwise, CheckCircle } from '@phosphor-icons/react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { adapter, normalizeError, windowAction } from '@/lib/bridge';
 import { motionPreference, type MotionLevel, type Settings } from '@/lib/protocol';

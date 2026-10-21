@@ -988,21 +988,6 @@ pub fn clamp_position(x: i32, y: i32, width: i32, height: i32) -> (i32, i32) {
         )
     }
 }
-pub fn work_area(x: i32, y: i32) -> (i32, i32, i32, i32) {
-    unsafe {
-        let monitor = MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST);
-        let mut info = MONITORINFO {
-            cbSize: size_of::<MONITORINFO>() as u32,
-            ..Default::default()
-        };
-        if GetMonitorInfoW(monitor, &mut info).as_bool() {
-            let r = info.rcWork;
-            (r.left, r.top, r.right - r.left, r.bottom - r.top)
-        } else {
-            (0, 0, 1280, 720)
-        }
-    }
-}
 pub fn high_contrast() -> bool {
     unsafe {
         let mut value = HIGHCONTRASTW {
@@ -1032,18 +1017,6 @@ pub fn reduced_motion() -> bool {
             && enabled == 0
     }
 }
-pub fn system_colors() -> [u32; 5] {
-    unsafe {
-        [
-            GetSysColor(COLOR_WINDOW),
-            GetSysColor(COLOR_WINDOWTEXT),
-            GetSysColor(COLOR_HIGHLIGHT),
-            GetSysColor(COLOR_HIGHLIGHTTEXT),
-            GetSysColor(COLOR_GRAYTEXT),
-        ]
-    }
-}
-
 struct BusyGuard(Arc<AtomicBool>);
 impl BusyGuard {
     fn acquire(busy: Arc<AtomicBool>) -> Option<Self> {
