@@ -32,6 +32,8 @@ State is persisted on transitions and once a minute during running sessions. A w
 
 Requires Node.js 22+, pnpm 10, stable Rust MSVC, Visual Studio C++ Build Tools, and the Windows SDK.
 
+The Next.js static frontend owns presentation and settings drafts. `orbit-runtime` serializes application commands and persistence; `focus-core` owns timing, `focus-storage` owns SQLite, and `platform-win` owns Windows integration. The Tauri host manages native windows and dialogs. Typed IPC uses string task IDs and revisioned events; failed accepted writes are retried without resubmitting the mutation. Frontend animation never controls timer accuracy.
+
 ```powershell
 pnpm --dir frontend install --frozen-lockfile
 pnpm --dir frontend dev
@@ -54,13 +56,20 @@ cargo build --release --locked
 Checks:
 
 ```powershell
+cargo fmt --all -- --check
 cargo test --workspace --locked
 pnpm --dir frontend typecheck
 pnpm --dir frontend test
 pnpm --dir frontend exec playwright install chromium
 pnpm --dir frontend test:e2e
 node frontend/tests/native-ui.mjs
+python scripts/branding-check.py target/release/orbit.exe
+python scripts/integration-check.py target/release/orbit.exe
+python scripts/integration-failure-check.py target/release/orbit.exe
+python scripts/checkpoint-recovery-check.py target/release/orbit.exe
 ```
+
+Build the static frontend and release host before native checks. The native UI driver uses an isolated database and a test-only WebView2 debugging port; production builds do not enable remote debugging. For resource measurements, use `scripts/measure-desktop.py` (optionally `--hidden-soak`) and `scripts/measure-window-startup.py`. Hardware sleep, mixed-DPI monitor changes, Windows accessibility settings, and clean-machine installation require manual checks.
 
 ## Package
 
@@ -70,7 +79,7 @@ node frontend/tests/native-ui.mjs
 
 Requires Python 3.11+ with `psutil` and Inno Setup 6.7.3+. Use `-InnoCompiler` for a custom compiler or `-SkipInstaller` for the portable ZIP. The script builds the frontend and Rust host, checks persistence/legacy data, assembles dependency/font notices, measures the full process tree and interactive startup, verifies the archive, and writes SHA-256 sums to `dist`.
 
-See [desktop architecture](docs/DESKTOP-ARCHITECTURE.md), [release validation](docs/RELEASE-VALIDATION.md), and [performance measurements](docs/PERFORMANCE.md) for state ownership, checks, measured tradeoffs, and remaining manual acceptance work. Historical source and release records remain available through the Git tags and GitHub releases.
+See [release validation](docs/RELEASE-VALIDATION.md) and [performance measurements](docs/PERFORMANCE.md) for measured results, tradeoffs, and remaining manual acceptance work. Historical source and release records remain available through the Git tags and GitHub releases.
 
 ## License
 

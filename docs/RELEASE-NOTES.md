@@ -7,7 +7,7 @@
 - Uses typed IPC and string IDs; separates timer events from application changes and preserves pending-vs-durable error handling.
 - Retains installer/notification identity and close-to-tray behavior. Adds WebView2 prerequisite handling, local font assets/notices, whole-process-tree resource measurements, and an interactive startup probe.
 
-Validation and measurement scope are recorded in DESKTOP-ARCHITECTURE.md and RELEASE-VALIDATION.md. Historical release records follow.
+Validation and measurement scope are recorded in RELEASE-VALIDATION.md and PERFORMANCE.md. Historical release records follow.
 
 # Orbit 0.2.0 — 20 October 2026
 

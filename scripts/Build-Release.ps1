@@ -48,7 +48,7 @@ try {
     Copy-Item -LiteralPath 'README.md','LICENSE' -Destination $stagingRoot
     $stagingDocs = Join-Path $stagingRoot 'docs'
     New-Item -ItemType Directory -Path $stagingDocs -Force | Out-Null
-    Copy-Item -LiteralPath 'docs\build-info.json','docs\release-footprint.json','docs\release-window-startup.json','docs\RELEASE-NOTES.md','docs\DESKTOP-ARCHITECTURE.md','docs\PERFORMANCE.md','docs\RELEASE-VALIDATION.md' -Destination $stagingDocs
+    Copy-Item -LiteralPath 'docs\build-info.json','docs\release-footprint.json','docs\release-window-startup.json','docs\RELEASE-NOTES.md','docs\PERFORMANCE.md','docs\RELEASE-VALIDATION.md' -Destination $stagingDocs
     # Include optional extended audits only when they identify this exact executable.
     $stagedHash = (Get-FileHash -LiteralPath $stagedExecutable -Algorithm SHA256).Hash
     foreach ($auditName in @('release-steady-footprint.json','release-hidden-soak.json','release-native-performance.json','release-ui-validation.json')) {
