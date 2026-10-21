@@ -1,4 +1,4 @@
-param([string]$InnoCompiler = '', [switch]$SkipInstaller, [switch]$SkipChecks)
+param([string]$InnoCompiler = '', [switch]$SkipInstaller, [switch]$SkipChecks, [switch]$SkipMeasurements)
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 Push-Location $projectRoot
@@ -41,14 +41,21 @@ try {
         python scripts\checkpoint-recovery-check.py $stagedExecutable
         if ($LASTEXITCODE -ne 0) { throw 'Checkpoint recovery failed.' }
     }
-    python scripts\measure-desktop.py $stagedExecutable --output docs\release-footprint.json
-    if ($LASTEXITCODE -ne 0) { throw 'Process-tree measurement failed.' }
-    python scripts\measure-window-startup.py --executable $stagedExecutable --trials 8 --output docs\release-window-startup.json
-    if ($LASTEXITCODE -ne 0) { throw 'Interactive startup measurement failed.' }
+    if (-not $SkipMeasurements) {
+        python scripts\measure-desktop.py $stagedExecutable --output docs\release-footprint.json
+        if ($LASTEXITCODE -ne 0) { throw 'Process-tree measurement failed.' }
+        python scripts\measure-window-startup.py --executable $stagedExecutable --trials 8 --output docs\release-window-startup.json
+        if ($LASTEXITCODE -ne 0) { throw 'Interactive startup measurement failed.' }
+    }
     Copy-Item -LiteralPath 'README.md','LICENSE' -Destination $stagingRoot
     $stagingDocs = Join-Path $stagingRoot 'docs'
     New-Item -ItemType Directory -Path $stagingDocs -Force | Out-Null
-    Copy-Item -LiteralPath 'docs\build-info.json','docs\release-footprint.json','docs\release-window-startup.json','docs\RELEASE-NOTES.md','docs\PERFORMANCE.md','docs\RELEASE-VALIDATION.md' -Destination $stagingDocs
+    Copy-Item -LiteralPath 'docs\build-info.json','docs\RELEASE-NOTES.md','docs\PERFORMANCE.md','docs\RELEASE-VALIDATION.md' -Destination $stagingDocs
+    if (-not $SkipMeasurements) { Copy-Item -LiteralPath 'docs\release-footprint.json','docs\release-window-startup.json' -Destination $stagingDocs }
+    foreach ($report in @('EXPERIENCE-UPGRADE.md','RELEASE-0.3.1.md')) {
+        $reportPath = Join-Path 'docs' $report
+        if (Test-Path -LiteralPath $reportPath) { Copy-Item -LiteralPath $reportPath -Destination $stagingDocs }
+    }
     # Include optional extended audits only when they identify this exact executable.
     $stagedHash = (Get-FileHash -LiteralPath $stagedExecutable -Algorithm SHA256).Hash
     foreach ($auditName in @('release-steady-footprint.json','release-hidden-soak.json','release-native-performance.json','release-ui-validation.json')) {
@@ -67,6 +74,7 @@ try {
     }
     $verificationArgs = @('scripts\verify-release.py')
     if ($SkipInstaller) { $verificationArgs += '--skip-installer' }
+    if ($SkipMeasurements) { $verificationArgs += '--skip-measurements' }
     python @verificationArgs
     if ($LASTEXITCODE -ne 0) { throw 'Release verification failed.' }
     $releaseFiles = @("dist\Orbit-$version-windows-x64.zip")

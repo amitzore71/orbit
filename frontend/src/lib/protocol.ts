@@ -1,10 +1,14 @@
 /** Mirrors orbit-runtime/protocol.rs. IDs remain strings across the IPC boundary. */
 export type Mode = 'Focus' | 'ShortBreak' | 'LongBreak';
+export type Accent = 'coral' | 'sage' | 'amber' | 'slate_blue';
+export type Density = 'comfortable' | 'compact';
+export type MotionLevel = 'standard' | 'reduced' | 'off';
 export interface Settings {
   focus_minutes: number; short_minutes: number; long_minutes: number; long_interval: number;
   auto_breaks: boolean; auto_focus: boolean; volume: number; sound: number; notifications: boolean;
   reduced_motion: boolean; mica: boolean; autostart: boolean; appearance: number;
   hotkey_toggle: string; hotkey_show: string; hotkey_skip: string;
+  accent?: Accent; density?: Density; motion_level?: MotionLevel | null;
 }
 export interface WidgetPreferences {enabled: boolean; x: number | null; y: number | null; layer: number; click_through: boolean}
 export interface TimerSnapshot {
@@ -41,7 +45,18 @@ export type Reply = {type: 'saved'; value: number} | {type: 'snapshot'; value: A
   | {type: 'report'; value: Report} | {type: 'details'; value: string[]}
   | {type: 'created' | 'file'; value: string};
 export interface RuntimeError {message: string; accepted: boolean}
-export interface Appearance {dark: boolean; high_contrast: boolean; reduced_motion: boolean; mica_active?: boolean}
+export interface Appearance {
+  dark: boolean; high_contrast: boolean; reduced_motion: boolean; mica_active?: boolean;
+  accent?: Accent; density?: Density; motion_level?: MotionLevel;
+  system_dark?: boolean; system_reduced_motion?: boolean;
+}
+export function motionPreference(settings: Settings): MotionLevel {
+  return settings.motion_level ?? (settings.reduced_motion ? 'reduced' : 'standard');
+}
+export function normalizeSettings(settings: Settings): Settings {
+  const motion_level = motionPreference(settings);
+  return {...settings, accent: settings.accent ?? 'coral', density: settings.density ?? 'comfortable', motion_level, reduced_motion: motion_level !== 'standard'};
+}
 export interface Change {revision: number; domains: string[]}
 export const defaultQuery: ReportQuery = {period: 'week', offset: 0, start: '', end: ''};
 export function duration(ms: number) {

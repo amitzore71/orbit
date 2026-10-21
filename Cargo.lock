@@ -793,14 +793,14 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "focus-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "focus-storage"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "focus-core",
@@ -2151,7 +2151,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orbit"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "focus-core",
  "focus-storage",
@@ -2166,7 +2166,7 @@ dependencies = [
 
 [[package]]
 name = "orbit-runtime"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "focus-core",
  "focus-storage",
@@ -2296,7 +2296,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "platform-win"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "focus-core",
  "windows",

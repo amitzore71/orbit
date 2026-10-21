@@ -459,7 +459,8 @@ impl Runtime {
                 self.refresh_tasks()?;
                 self.changed(&["tasks", "timer", "reports"]);
             }
-            AppCommand::SaveSettings { settings } => {
+            AppCommand::SaveSettings { mut settings } => {
+                settings.normalize_appearance();
                 settings.validate().map_err(RuntimeError::from)?;
                 self.store(Operation::Settings(settings.clone()))?;
                 self.timer.settings = settings.clone();

@@ -9,6 +9,9 @@ const root = resolve(import.meta.dirname, '../..');
 const exe = resolve(process.argv[2] || `${root}/target/release/orbit.exe`);
 const data = resolve(root, `artifacts/native-ui-${Date.now()}`);
 const cycles = Number(process.env.ORBIT_WIDGET_CYCLES || 10);
+const measurementLabel = process.env.ORBIT_MEASUREMENT_LABEL || 'upgrade';
+const measurementDirectory = resolve(root, 'artifacts/upgrade', measurementLabel);
+await mkdir(measurementDirectory, {recursive: true});
 await mkdir(data, {recursive: true});
 const port = 19340;
 const maxSeconds = Math.max(180, Math.ceil(cycles * .6) + 120);
@@ -47,13 +50,43 @@ try {
   await page.getByRole('button', {name: /Pause session/}).waitFor();
   await page.waitForFunction(()=>typeof window.__ORBIT_FEEDBACK_MS__==='number');
   const feedbackMs=await page.evaluate(()=>window.__ORBIT_FEEDBACK_MS__);
+  const feedbackSamples = [feedbackMs];
+  for (let sample = 0; sample < 12; sample++) {
+    const expected = sample % 2 === 0 ? 'Resume session' : 'Pause session';
+    await page.evaluate(expected => {
+      window.__ORBIT_FEEDBACK_MS__ = null;
+      document.addEventListener('click', () => {
+        const began = performance.now();
+        const observer = new MutationObserver(() => {
+          if (!document.querySelector(`button[aria-label="${expected}"]`)) return;
+          observer.disconnect();
+          requestAnimationFrame(() => {window.__ORBIT_FEEDBACK_MS__ = performance.now() - began;});
+        });
+        observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-label']});
+      }, {capture: true, once: true});
+    }, expected);
+    await page.getByRole('button', {name: sample % 2 === 0 ? 'Pause session' : 'Resume session', exact: true}).click();
+    await page.waitForFunction(() => typeof window.__ORBIT_FEEDBACK_MS__ === 'number');
+    feedbackSamples.push(await page.evaluate(() => window.__ORBIT_FEEDBACK_MS__));
+  }
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  await cdp.send('Profiler.enable');
+  const beforeMetrics = await cdp.send('Performance.getMetrics');
+  await cdp.send('Profiler.start');
   const frameIntervals=await page.evaluate(()=>new Promise(resolve=>{
     const deltas=[];let last=performance.now();
     function frame(now){if(deltas.length)deltas.push(now-last);else deltas.push(0);last=now;if(deltas.length<121)requestAnimationFrame(frame);else resolve(deltas.slice(1));}
     requestAnimationFrame(frame);
   }));
   const sortedFrames=frameIntervals.toSorted((a,b)=>a-b);
-  const performanceResult={executableSha256:createHash('sha256').update(await readFile(exe)).digest('hex').toUpperCase(),clickToFeedbackMs:feedbackMs,frameIntervalP95Ms:sortedFrames[Math.ceil(sortedFrames.length*.95)-1],frameSamples:sortedFrames.length,scope:'Real WebView2: DOM click through rendered timer feedback; rAF intervals while focusing. One click sample; excludes physical display latency.'};
+  const profile = await cdp.send('Profiler.stop');
+  const afterMetrics = await cdp.send('Performance.getMetrics');
+  await writeFile(`${measurementDirectory}/timer.cpuprofile`, JSON.stringify(profile.profile));
+  await writeFile(`${measurementDirectory}/renderer-metrics.json`, JSON.stringify({before: beforeMetrics, after: afterMetrics}, null, 2));
+  const sortedFeedback = feedbackSamples.toSorted((a,b)=>a-b);
+  const performanceResult={executableSha256:createHash('sha256').update(await readFile(exe)).digest('hex').toUpperCase(),clickToFeedbackMs:feedbackMs,interactionP95Ms:sortedFeedback[Math.ceil(sortedFeedback.length*.95)-1],interactionSamplesMs:feedbackSamples,frameIntervalP95Ms:sortedFrames[Math.ceil(sortedFrames.length*.95)-1],frameSamples:sortedFrames.length,scope:'Real WebView2: 13 DOM clicks through rendered timer feedback; 120 rAF intervals while focusing. Renderer CPU profile and metrics accompany the samples. Excludes physical display latency.'};
+  await writeFile(`${measurementDirectory}/native-performance.json`,JSON.stringify(performanceResult,null,2));
   await writeFile(`${root}/artifacts/native-ui-performance.json`,JSON.stringify(performanceResult,null,2));
   await page.getByRole('button',{name:'Insights',exact:true}).click();
   await delay(2200);
@@ -95,10 +128,16 @@ try {
   let denied = false;
   try {await invoke(page, 'orbit_command', {command: {type: 'backup', path: `${data}/forbidden.db`}});} catch {denied = true;}
   if (!denied) throw new Error('Generic IPC exposed file operations.');
+  await invoke(page, 'orbit_command', {command: {type: 'timer', action: 'start'}});
+  await page.getByRole('button', {name: 'Pause session', exact: true}).waitFor();
   await invoke(page, 'window_command', {action: 'hide'});
   await delay(200);
+  const hiddenCountdown = await page.locator('.time-display').innerText();
+  await delay(1500);
+  if (measurementLabel !== 'baseline' && await page.locator('.time-display').innerText() !== hiddenCountdown) throw new Error('A hidden main window continued rendering countdown updates.');
   if (proc.exitCode !== null) throw new Error('Hiding the main window terminated the app.');
   await invoke(taskWidget, 'window_command', {action: 'show'});
+  await invoke(page, 'orbit_command', {command: {type: 'timer', action: 'pause'}});
   // Repeated widget creation/destruction exercises native subclass and callback cleanup.
   for (let cycle = 0; cycle < cycles; cycle++) {await widgetCommand(0, false); await delay(200); await widgetCommand(0, true); await delay(200);}
   await page.getByRole('button', {name: 'Settings', exact: true}).click();
@@ -106,8 +145,29 @@ try {
   await page.getByRole('button', {name: 'Save changes', exact: true}).click();
   await page.getByText('All changes saved', {exact: true}).waitFor();
   await page.screenshot({path: `${root}/artifacts/redesign/native-settings.png`});
+  if (measurementLabel !== 'baseline') {
+    await page.getByRole('button', {name: 'Appearance', exact: true}).click();
+    await page.getByRole('button', {name: 'Sage', exact: true}).click();
+    await page.getByLabel('Interface density').selectOption('compact');
+    await page.getByLabel('Animation level').selectOption('reduced');
+    widgetPages = browser.contexts().flatMap(c => c.pages()).filter(p => p.url().includes('widget'));
+    for (const widget of widgetPages) {
+      if (await widget.locator('.orbit-app').getAttribute('data-accent') !== 'coral') throw new Error('An unsaved preview escaped to a widget.');
+    }
+    await page.getByRole('button', {name: 'Save changes', exact: true}).click();
+    await page.getByText('All changes saved', {exact: true}).waitFor();
+    for (const widget of widgetPages) {
+      await widget.locator('.orbit-app[data-accent="sage"][data-density="compact"][data-motion="reduced"]').waitFor();
+      if (new URL(widget.url()).searchParams.get('kind') === '1') {
+        const summaryFits = await widget.locator('.today-totals').evaluate(e => {const box = e.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight;});
+        if (!summaryFits) throw new Error('Compact task-widget totals exceeded the native window.');
+      }
+    }
+    await page.screenshot({path: `${measurementDirectory}/native-appearance.png`});
+    for (const widget of widgetPages) await widget.screenshot({path: `${measurementDirectory}/widget-${new URL(widget.url()).searchParams.get('kind')}.png`});
+  }
   const afterSettings=await invoke(page,'orbit_command',{command:{type:'snapshot'}});
-  await invoke(page,'orbit_command',{command:{type:'save_settings',settings:{...afterSettings.value.settings,appearance:1,reduced_motion:true,mica:true}}});
+  await invoke(page,'orbit_command',{command:{type:'save_settings',settings:{...afterSettings.value.settings,appearance:1,reduced_motion:true,motion_level:'reduced',mica:true}}});
   await page.locator('.orbit-app[data-theme="light"][data-reduced-motion="true"]').waitFor();
   await page.getByRole('button',{name:'Focus',exact:true}).first().click();
   await page.locator('.focus-workspace').waitFor();
@@ -118,12 +178,21 @@ try {
   const discard=page.getByRole('button',{name:'Discard',exact:true});
   if(await discard.isEnabled())await discard.click();
   await page.getByText('All changes saved',{exact:true}).waitFor();
+  if (measurementLabel !== 'baseline') {
+    await invoke(page, 'orbit_command', {command: {type: 'task', id: saved.tasks[0].id, action: 'delete'}});
+    await taskWidget.getByRole('heading', {name: 'A fresh page for today.'}).waitFor();
+    const totalsFit = await taskWidget.locator('.today-totals').evaluate(e => {const box = e.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight;});
+    if (!totalsFit) throw new Error('Empty task-widget totals exceeded the native window.');
+    await taskWidget.screenshot({path: `${measurementDirectory}/widget-empty.png`});
+  }
   await delay(200);
   await invoke(page, 'window_command', {action: 'quit'});
   for (let i = 0; i < 100 && proc.exitCode === null; i++) await delay(100);
   if (proc.exitCode !== 0) throw new Error(`Normal native quit failed: ${proc.exitCode}`);
   if (errors.length) throw new Error(errors.join('\n'));
-  await writeFile(`${root}/artifacts/native-ui-check.json`, JSON.stringify({dataDirectory: data, realRustBridge: true, realWebView2: true, unicodeTasks: true, taskBinding: true, allWidgets: true, widgetCycles: cycles, closeToTray: true, settingsSave: true, pathInjectionDenied: true, pageErrors: errors, logs}, null, 2));
+  const validation = {executableSha256: performanceResult.executableSha256, dataDirectory: data, realRustBridge: true, realWebView2: true, unicodeTasks: true, taskBinding: true, allWidgets: true, widgetCycles: cycles, closeToTray: true, hiddenCountdownSuspended: measurementLabel !== 'baseline', appearancePreviewAndWidgetSave: measurementLabel !== 'baseline', emptyWidgetFits: measurementLabel !== 'baseline', settingsSave: true, pathInjectionDenied: true, pageErrors: errors, logs};
+  await writeFile(`${root}/artifacts/native-ui-check.json`, JSON.stringify(validation, null, 2));
+  await writeFile(`${measurementDirectory}/native-validation.json`, JSON.stringify(validation, null, 2));
   console.log('Native WebView2 + Rust integration passed.');
 } catch (e) {
   console.error(logs);

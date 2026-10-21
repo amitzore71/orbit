@@ -28,7 +28,7 @@ for name, options in scenarios:
     data = root / 'artifacts' / f'footprint-{name}-{time.time_ns()}'
     proc = subprocess.Popen([str(exe), '--isolated', '--data-dir', str(data), '--quit-after', str(args.warmup+args.seconds+120), *options])
     process = psutil.Process(proc.pid)
-    cpu_seen, samples, working, counts = {}, [], [], []
+    cpu_seen, cpu_roles, cpu_by_role, samples, working, counts = {}, {}, {}, [], [], []
     def tree():
         return [process, *process.children(recursive=True)]
     def sample_cpu(members):
@@ -36,7 +36,24 @@ for name, options in scenarios:
         for member in members:
             try:
                 key=(member.pid,member.create_time()); cpu=member.cpu_times(); value=cpu.user+cpu.system
-                if key in cpu_seen: total += max(0, value-cpu_seen[key])
+                if key not in cpu_roles:
+                    role = 'orbit' if member.pid == proc.pid else 'webview_browser'
+                    try:
+                        arguments = member.cmdline()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        arguments = []
+                        if member.pid != proc.pid:
+                            role = 'webview_unknown'
+                    for argument in arguments:
+                        if argument.startswith('--type='):
+                            role = argument.split('=', 1)[1]
+                            break
+                    cpu_roles[key] = role
+                if key in cpu_seen:
+                    delta = max(0, value-cpu_seen[key])
+                    total += delta
+                    role = cpu_roles[key]
+                    cpu_by_role[role] = cpu_by_role.get(role, 0) + delta
                 cpu_seen[key]=value
             except (psutil.NoSuchProcess, psutil.AccessDenied): pass
         return total
@@ -57,6 +74,7 @@ for name, options in scenarios:
             if args.hidden_soak and tick%60==0: print(f'{name}: {int(time.perf_counter()-started)}/{args.seconds} seconds sampled', flush=True)
         elapsed=time.perf_counter()-started
         result=dict(scenario=name, privateBytesMean=int(statistics.mean(samples)), privateBytesPeak=max(samples), workingSetBytesMean=int(statistics.mean(working)), processCountPeak=max(counts), cpuPercentOfOneCore=round(100*cpu_total/elapsed,4), sampleSeconds=args.seconds, actualSampleSeconds=round(elapsed,3), warmupSeconds=args.warmup)
+        result['cpuByRolePercentOfOneCore'] = {role: round(100 * seconds / elapsed, 4) for role, seconds in sorted(cpu_by_role.items())}
         results.append(result); print(json.dumps(result), flush=True)
         # End the isolated test process after sampling; do not wait out the safety margin.
         proc.terminate()

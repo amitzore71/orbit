@@ -10,6 +10,7 @@ import tomllib
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--skip-installer", action="store_true")
+parser.add_argument("--skip-measurements", action="store_true", help="Package without claiming final-binary performance measurements")
 args = parser.parse_args()
 version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
 stage = root / f"dist/Orbit-{version}-windows-x64"
@@ -24,7 +25,7 @@ assert build["version"] == version
 assert len(exe) <= 50_000_000, "Release executable exceeds 50 MB"
 assert len(source) == build["sourceExecutableBytes"]
 assert hashlib.sha256(source).hexdigest().upper() == build["sourceExecutableSha256"]
-for report in ("release-footprint.json", "release-window-startup.json"):
+for report in (() if args.skip_measurements else ("release-footprint.json", "release-window-startup.json")):
     audit = json.loads((stage / "docs" / report).read_text(encoding="utf-8-sig"))
     assert audit["executableSha256"] == digest, f"Stale release measurements: {report}"
 
@@ -75,7 +76,7 @@ if not args.skip_installer:
     assert (root / f"dist/Orbit-{version}-Setup-x64.exe").stat().st_size > 1000000
 result = dict(executableSha256=digest, executableBytes=len(exe), sourceExecutableBytes=len(source),
               compression=build["compression"], distributionBytes=sum(map(len, payload.values())),
-              zipMatchesStaging=True, x64=True, aslr=True, nx=True, externalVCRuntime=False, imports=imports)
+              zipMatchesStaging=True, finalBinaryMeasurementsVerified=not args.skip_measurements, x64=True, aslr=True, nx=True, externalVCRuntime=False, imports=imports)
 (root / "artifacts").mkdir(exist_ok=True)
 (root / "artifacts/release-verification.json").write_text(json.dumps(result, indent=2))
 print(json.dumps(result, indent=2))

@@ -1,3 +1,14 @@
+# Orbit 0.3.1 — 21 October 2026
+
+- Adds four accent presets, Comfortable/Compact density, and Standard/Reduced/Off animation levels with local previews, explicit Save/Discard, and Reset appearance.
+- Improves text sizes, shared controls, report labels, and compact layouts across the workspace and desktop widgets. Short windows keep Start/Pause alongside the countdown.
+- Remembers task filters, search, list position, report dates, and settings categories during navigation. Adds keyboard access through virtualized rows and Escape/focus restoration for detail panels and the focus picker.
+- Displays the configured Windows shortcut and distinguishes current-session work from the next selected task.
+- Separates live countdown subscriptions from the workspace, coalesces revisioned snapshot refreshes, defers Insights/Settings code, and targets timer/visibility events to individual native windows.
+- Keeps schema 4, existing data, backups, session attribution, and legacy reduced-motion settings. New motion preferences synchronize the legacy boolean when saved.
+
+This release packages the experience upgrade. Prior performance measurements identify the tested upgrade candidate; the versioned release is rebuilt with 0.3.1 metadata. The main-window memory target remains missed and the ten-minute hidden CPU check remains incomplete. See the [experience upgrade report](EXPERIENCE-UPGRADE.md) for current build validation and measurements.
+
 # Orbit 0.3.0 — 21 October 2026
 
 - Replaces Slint with a bundled Next.js / React interface in Tauri 2. Production builds embed static assets and run without a Node server or internet connection.

@@ -1,5 +1,49 @@
 use super::*;
 
+#[test]
+fn legacy_appearance_defaults_and_curated_preferences_roundtrip_without_migration() {
+    use focus_core::{Accent, Density, MotionLevel};
+    let mut store = Store::connection(Connection::open_in_memory().unwrap()).unwrap();
+    store
+        .db
+        .execute(
+            "INSERT OR REPLACE INTO meta(key,value) VALUES('settings', ?)",
+            [r#"{"appearance":2,"focus_minutes":40,"reduced_motion":true}"#],
+        )
+        .unwrap();
+    let legacy = store.load().unwrap().settings;
+    assert_eq!(legacy.appearance, 2);
+    assert_eq!(legacy.focus_minutes, 40);
+    assert_eq!(legacy.accent, Accent::Coral);
+    assert_eq!(legacy.density, Density::Comfortable);
+    assert_eq!(legacy.effective_motion(), MotionLevel::Reduced);
+    let mut preferences = Settings {
+        accent: Accent::SlateBlue,
+        density: Density::Compact,
+        motion_level: Some(MotionLevel::Off),
+        ..legacy
+    };
+    preferences.normalize_appearance();
+    store
+        .process(Operation::Settings(preferences.clone()))
+        .unwrap();
+    assert_eq!(store.load().unwrap().settings, preferences);
+    assert_eq!(
+        store
+            .db
+            .pragma_query_value(None, "user_version", |r| r.get::<_, i32>(0))
+            .unwrap(),
+        4
+    );
+    for invalid in [
+        r#"{"accent":"neon"}"#,
+        r#"{"density":"tiny"}"#,
+        r#"{"motion_level":"fast"}"#,
+    ] {
+        assert!(serde_json::from_str::<Settings>(invalid).is_err());
+    }
+}
+
 fn directory() -> PathBuf {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../artifacts/storage-product")

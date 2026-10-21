@@ -1,4 +1,28 @@
 use super::*;
+
+#[test]
+fn saving_curated_appearance_synchronizes_legacy_motion_and_is_durable() {
+    use focus_core::{Accent, Density, MotionLevel};
+    let (mut runtime, _, path) = fixture();
+    runtime
+        .execute(AppCommand::SaveSettings {
+            settings: Settings {
+                accent: Accent::Sage,
+                density: Density::Compact,
+                motion_level: Some(MotionLevel::Off),
+                reduced_motion: false,
+                ..Settings::default()
+            },
+        })
+        .unwrap();
+    assert!(runtime.timer.settings.reduced_motion);
+    drop(runtime);
+    let (_worker, loaded) = Worker::open(path).unwrap();
+    assert_eq!(loaded.settings.accent, Accent::Sage);
+    assert_eq!(loaded.settings.density, Density::Compact);
+    assert_eq!(loaded.settings.effective_motion(), MotionLevel::Off);
+    assert!(loaded.settings.reduced_motion);
+}
 use focus_core::{Settings, TimePoint};
 use rusqlite::Connection;
 use std::sync::{

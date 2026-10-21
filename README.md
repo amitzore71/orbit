@@ -20,6 +20,10 @@ The installer checks WebView2 and downloads Microsoft's Evergreen bootstrapper o
 
 Defaults are 25/5/15 minutes, a long break every four completed focus sessions, and no automatic starts. Sleep does not count as focus. Global shortcuts remain `Ctrl+Alt+P` for start/pause and `Ctrl+Alt+O` to open Orbit; Skip is disabled by default.
 
+Appearance includes System/Light/Dark themes, Coral/Sage/Amber/Slate Blue accents, Comfortable/Compact density, and Standard/Reduced/Off animations. Changes preview in the main window; Save applies them to your widgets, and Discard restores the saved appearance. Reset appearance changes only the draft. Windows high contrast and reduced motion take precedence. Older backups retain their theme, durations, and reduced-motion preference without a database migration.
+
+Task filters, search, list position, report range, and the settings category survive navigation while Orbit is open. Use Up/Down or Home/End within a task list to reach virtualized rows, and Escape to close task details or the focus picker. Timer controls show your configured Windows shortcut. Short windows keep the timer and Start/Pause control together in a horizontal layout.
+
 ## Your data
 
 The database remains `%LOCALAPPDATA%\Orbit\orbit.db`. `orbit.exe --data-dir "D:\FocusData"` selects another location. Legacy `%LOCALAPPDATA%\StillPomodoro\still.db`, or `still.db` in a custom directory, is reused in place. Uninstalling retains your data. WebView cache files are stored separately under the data directory's `webview` folder.
@@ -79,7 +83,7 @@ Build the static frontend and release host before native checks. The native UI d
 
 Requires Python 3.11+ with `psutil` and Inno Setup 6.7.3+. Use `-InnoCompiler` for a custom compiler or `-SkipInstaller` for the portable ZIP. The script builds the frontend and Rust host, checks persistence/legacy data, assembles dependency/font notices, measures the full process tree and interactive startup, verifies the archive, and writes SHA-256 sums to `dist`.
 
-See [release validation](docs/RELEASE-VALIDATION.md) and [performance measurements](docs/PERFORMANCE.md) for measured results, tradeoffs, and remaining manual acceptance work. Historical source and release records remain available through the Git tags and GitHub releases.
+See the [experience upgrade report](docs/EXPERIENCE-UPGRADE.md) for this workspace build. The earlier packaged release's [validation](docs/RELEASE-VALIDATION.md) and [performance measurements](docs/PERFORMANCE.md) remain available with their executable identities. Historical source and release records remain available through the Git tags and GitHub releases.
 
 ## License
 

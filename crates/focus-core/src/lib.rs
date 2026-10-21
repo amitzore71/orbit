@@ -32,6 +32,31 @@ impl Mode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Accent {
+    #[default]
+    Coral,
+    Sage,
+    Amber,
+    SlateBlue,
+}
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Density {
+    #[default]
+    Comfortable,
+    Compact,
+}
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MotionLevel {
+    #[default]
+    Standard,
+    Reduced,
+    Off,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
@@ -52,6 +77,10 @@ pub struct Settings {
     pub hotkey_skip: String,
     /// 0 follows Windows, 1 is light, 2 is dark.
     pub appearance: u32,
+    pub accent: Accent,
+    pub density: Density,
+    /// None preserves the reduced_motion preference in pre-upgrade backups.
+    pub motion_level: Option<MotionLevel>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -72,10 +101,25 @@ impl Default for Settings {
             hotkey_show: "Ctrl+Alt+O".into(),
             hotkey_skip: String::new(),
             appearance: 0,
+            accent: Accent::Coral,
+            density: Density::Comfortable,
+            motion_level: None,
         }
     }
 }
 impl Settings {
+    pub fn effective_motion(&self) -> MotionLevel {
+        self.motion_level.unwrap_or(if self.reduced_motion {
+            MotionLevel::Reduced
+        } else {
+            MotionLevel::Standard
+        })
+    }
+    pub fn normalize_appearance(&mut self) {
+        let motion = self.effective_motion();
+        self.motion_level = Some(motion);
+        self.reduced_motion = motion != MotionLevel::Standard;
+    }
     pub fn validate(&self) -> Result<(), String> {
         if !(1..=180).contains(&self.focus_minutes)
             || !(1..=180).contains(&self.short_minutes)

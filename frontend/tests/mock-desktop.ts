@@ -19,7 +19,7 @@ export async function mockDesktop(page: Page, options: {light?: boolean; reduced
     if (options.many) data.tasks = Array.from({length: 5000}, (_, i) => ({...data.tasks[0], id: String(i + 1), title: `Research task ${i + 1}`, today_order: i}));
     const changed = (domains: string[]) => {data.revision++; data.timer.revision = data.revision; emit('orbit://changed', {revision: data.revision, domains}); emit('orbit://timer', structuredClone(data.timer));};
     const report = {title: '19 Oct 2026 — 25 Oct 2026', active_ms: 15_180_000, completed: 9, partial_ms: 1_680_000, days: [{label: 'Mon', active_ms: 6_300_000, completed: 4}, {label: 'Tue', active_ms: 5_040_000, completed: 3}, {label: 'Wed', active_ms: 3_840_000, completed: 2}, ...['Thu', 'Fri', 'Sat', 'Sun'].map(label => ({label, active_ms: 0, completed: 0}))], tasks: [{id: '1', title: data.tasks[0].title, active_ms: 10_800_000, completed: 7, deleted: false}, {id: null, title: 'Without a task', active_ms: 4_380_000, completed: 2, deleted: false}]};
-    const testWindow = window as unknown as {__ORBIT_TEST__: unknown; __ORBIT_CALLS__: unknown[]; __ORBIT_LATENCY__: number; __ORBIT_EMIT__: typeof emit};
+    const testWindow = window as unknown as {__ORBIT_TEST__: unknown; __ORBIT_CALLS__: unknown[]; __ORBIT_LATENCY__: number; __ORBIT_EMIT__: typeof emit; __ORBIT_SAVE_ERROR__?: 'rejected' | 'accepted' | null};
     testWindow.__ORBIT_CALLS__ = []; testWindow.__ORBIT_LATENCY__ = 0; testWindow.__ORBIT_EMIT__ = emit;
     testWindow.__ORBIT_TEST__ = {
       listen: async (name: string, fn: (v: unknown) => void) => {if (!handlers.has(name)) handlers.set(name, new Set()); const subscription=(value: unknown)=>fn(value); handlers.get(name)!.add(subscription); return () => handlers.get(name)!.delete(subscription);},
@@ -39,7 +39,14 @@ export async function mockDesktop(page: Page, options: {light?: boolean; reduced
         if (c.type === 'select_mode') {data.timer.mode = c.mode; data.timer.running = false; data.timer.started = false; data.timer.total_ms = data.timer.remaining_ms = c.mode === 'Focus' ? 1500000 : c.mode === 'ShortBreak' ? 300000 : 900000; changed(['timer']);}
         if (c.type === 'task') {const task = data.tasks.find(t => t.id === c.id)!; if (c.action === 'delete') task.deleted = true; if (c.action === 'restore') {task.deleted = false; task.planned_for = null;} if (c.action === 'toggle_done') task.done = !task.done; if (c.action === 'plan') task.planned_for = data.today; if (c.action === 'unplan') task.planned_for = null; changed(['tasks']);}
         if (c.type === 'edit_task') {Object.assign(data.tasks.find(t => t.id === c.id)!, {title: c.title, estimate: c.estimate}); changed(['tasks']);}
-        if (c.type === 'save_settings') {const submitted = structuredClone(c.settings); await new Promise(r => setTimeout(r, testWindow.__ORBIT_LATENCY__)); data.settings = submitted; changed(['settings']);}
+        if (c.type === 'save_settings') {
+          const submitted = structuredClone(c.settings);
+          await new Promise(r => setTimeout(r, testWindow.__ORBIT_LATENCY__));
+          if (testWindow.__ORBIT_SAVE_ERROR__ === 'rejected') throw {message: 'Settings could not be saved. Try again.', accepted: false};
+          data.settings = submitted;
+          if (testWindow.__ORBIT_SAVE_ERROR__ === 'accepted') {data.storage_blocked = true; changed(['settings', 'storage']); throw {message: 'Your settings are waiting to be saved.', accepted: true};}
+          changed(['settings']);
+        }
         if (c.type === 'widget') {data.widgets[c.index] = c.preferences; changed(['widgets']);}
         if (c.type === 'retry_saving') {data.storage_blocked = false; changed(['storage']);}
         return {type: 'saved', value: data.revision};

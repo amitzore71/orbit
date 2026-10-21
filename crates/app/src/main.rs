@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-use focus_core::{Mode, Settings};
+use focus_core::{Accent, Density, Mode, MotionLevel, Settings};
 use orbit_runtime::{
     AppCommand, AppSnapshot, Reply, ReportQuery, RuntimeError, RuntimeEvent, RuntimeHandle,
     TimerAction,
@@ -38,6 +38,11 @@ struct Appearance {
     high_contrast: bool,
     reduced_motion: bool,
     mica_active: bool,
+    accent: Accent,
+    density: Density,
+    motion_level: MotionLevel,
+    system_dark: bool,
+    system_reduced_motion: bool,
 }
 #[derive(Clone, Serialize)]
 struct Change {
@@ -86,6 +91,11 @@ fn appearance(app: &tauri::AppHandle) {
         high_contrast: high,
         reduced_motion: settings.reduced_motion || high || platform_win::reduced_motion(),
         mica_active: mica,
+        accent: settings.accent,
+        density: settings.density,
+        motion_level: settings.effective_motion(),
+        system_dark: platform_win::prefers_dark(),
+        system_reduced_motion: high || platform_win::reduced_motion(),
     };
     let _ = app.emit("orbit://appearance", &value);
 }
@@ -96,7 +106,7 @@ fn observers(app: &tauri::AppHandle) {
             .into_values()
             .filter(|w| {
                 let visible = w.is_visible().unwrap_or(false) && !w.is_minimized().unwrap_or(true);
-                let _ = w.emit("orbit://visibility", visible);
+                let _ = w.emit_to(w.label(), "orbit://visibility", visible);
                 visible
                     && w.label() != "widget-1"
                     && (w.label() != "main" || s.main_timer_visible.load(Ordering::Acquire))
@@ -541,6 +551,11 @@ fn get_appearance(app: tauri::AppHandle) -> Appearance {
         high_contrast: high,
         reduced_motion: s.reduced_motion || high || platform_win::reduced_motion(),
         mica_active: app.state::<Desktop>().mica_active.load(Ordering::Acquire),
+        accent: s.accent,
+        density: s.density,
+        motion_level: s.effective_motion(),
+        system_dark: platform_win::prefers_dark(),
+        system_reduced_motion: high || platform_win::reduced_motion(),
     }
 }
 #[tauri::command]
@@ -715,7 +730,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Arc::new(WindowsClock),
                 Arc::new(move |event| match event {
                     RuntimeEvent::Timer(s) => {
-                        let _ = events_handle.emit("orbit://timer", s);
+                        // Hidden WebViews resync on reveal; do not wake their renderers every second.
+                        for window in events_handle.webview_windows().into_values() {
+                            if window.is_visible().unwrap_or(false)
+                                && !window.is_minimized().unwrap_or(true)
+                            {
+                                let _ = window.emit_to(window.label(), "orbit://timer", &s);
+                            }
+                        }
                     }
                     RuntimeEvent::Changed { revision, domains } => {
                         let widgets = domains.contains(&"widgets");
