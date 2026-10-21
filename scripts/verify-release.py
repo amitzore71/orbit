@@ -1,18 +1,15 @@
-"""Verify executable size, native imports, compression, metadata, and ZIP contents."""
+"""Verify executable size, native imports, metadata, and ZIP contents."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import struct
-import subprocess
-import tempfile
 import zipfile
 import tomllib
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--skip-installer", action="store_true")
-parser.add_argument("--upx", type=Path)
 args = parser.parse_args()
 version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
 stage = root / f"dist/Orbit-{version}-windows-x64"
@@ -53,26 +50,9 @@ def read_pe(data):
     return optional, sections
 
 
-def section_bytes(data, sections, name):
-    _, _, raw, size = sections[name]
-    return data[raw:raw+size]
-
-
 optional, sections = read_pe(source)
 read_pe(exe)
-if build["compression"] == "upx":
-    assert args.upx, "Pass --upx to verify a compressed build"
-    subprocess.run([str(args.upx), "-t", str(stage / "orbit.exe")], check=True)
-    with tempfile.TemporaryDirectory() as directory:
-        restored_path = Path(directory) / "orbit.exe"
-        subprocess.run([str(args.upx), "-d", "-o", str(restored_path), str(stage / "orbit.exe")], check=True)
-        restored = restored_path.read_bytes()
-        _, restored_sections = read_pe(restored)
-        # UPX may strip debug metadata; runtime code, data and unwind tables must match.
-        for name in (".text", ".data", ".pdata", ".reloc"):
-            assert section_bytes(source, sections, name) == section_bytes(restored, restored_sections, name), name
-else:
-    assert build["compression"] == "none" and exe == source
+assert build["compression"] == "none" and exe == source
 
 
 def offset(rva):

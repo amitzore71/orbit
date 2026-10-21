@@ -1,4 +1,4 @@
-"""Identify the current build separately from retained historical measurements."""
+"""Identify the current packaged executable."""
 import argparse
 import hashlib
 import json
@@ -8,14 +8,13 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--exe", type=Path, default=root / "target/release/orbit.exe")
-parser.add_argument("--compression", choices=["none", "upx"], default="none")
 args = parser.parse_args()
 exe = args.exe.read_bytes()
 source = (root / "target/release/orbit.exe").read_bytes()
 version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
 info = dict(application="Orbit", version=version, executable="orbit.exe", executableBytes=len(exe),
             executableSha256=hashlib.sha256(exe).hexdigest().upper(),
-            compression=args.compression, sourceExecutableBytes=len(source),
+            compression="none", sourceExecutableBytes=len(source),
             sourceExecutableSha256=hashlib.sha256(source).hexdigest().upper(),
             frontend="Next.js static export", host="Tauri 2", sharedRuntime="Microsoft Edge WebView2")
 (root / "docs/build-info.json").write_text(json.dumps(info, indent=2), encoding="utf-8", newline="\n")

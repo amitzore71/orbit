@@ -57,6 +57,6 @@ Window movement uses Slint's native WindowMoveArea for the main window and all w
 
 No accounts, cloud sync, ambient sounds, streaks, heatmaps, focus-lock, automatic updater, or WorkerW desktop attachment are included. Release binaries are unsigned unless a distributor signs them separately.
 
-Memory and reliability audit: bounded storage/native queues and alarm/toast concurrency; atomic task mutation snapshots; deterministic native-thread shutdown; safe native drag dispatch; virtualized task rows; minimized display-timer suspension; coalesced reports and schema-v2 report index/join. Schema v1 databases migrate automatically. See STABILITY.md for the measured stress and heap/handle validation results.
+Memory and reliability audit: bounded storage/native queues and alarm/toast concurrency; atomic task mutation snapshots; deterministic native-thread shutdown; safe native drag dispatch; virtualized task rows; minimized display-timer suspension; coalesced reports and schema-v2 report index/join. Schema v1 databases migrate automatically. See the [historical stability audit](https://github.com/amitzore71/orbit/blob/v0.2.0/docs/STABILITY.md) for that release's stress and heap/handle results.
 
 Existing pre-Orbit databases are reopened in place. The installer retains its upgrade identity and migrates an existing startup opt-in. Earlier performance and memory-audit records remain labelled as historical evidence.

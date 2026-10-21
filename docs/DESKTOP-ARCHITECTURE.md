@@ -42,4 +42,4 @@ Microsoft runtime distribution guidance: https://learn.microsoft.com/microsoft-e
 
 Acceptance targets: warm interactive startup p95 ≤1.5 seconds; feedback ≤100 ms; frame time p95 ≤20 ms at 60 Hz; hidden CPU <0.5% of one logical core over ten minutes; combined private memory ≤300 MiB main-only and ≤450 MiB with all widgets. Measurements must identify their executable hash and scope. A short CPU sample cannot establish the ten-minute target, and browser-emulated DPI does not establish physical multi-monitor behavior.
 
-Historical 0.1/0.2 Slint measurements remain in the other performance/product documents. They do not describe the current rendering stack.
+Historical Slint measurements are available in the 0.1/0.2 Git tags; current documentation describes the Tauri rendering stack.

@@ -70,7 +70,7 @@ node frontend/tests/native-ui.mjs
 
 Requires Python 3.11+ with `psutil` and Inno Setup 6.7.3+. Use `-InnoCompiler` for a custom compiler or `-SkipInstaller` for the portable ZIP. The script builds the frontend and Rust host, checks persistence/legacy data, assembles dependency/font notices, measures the full process tree and interactive startup, verifies the archive, and writes SHA-256 sums to `dist`.
 
-See [desktop architecture](docs/DESKTOP-ARCHITECTURE.md), [release validation](docs/RELEASE-VALIDATION.md), and [performance measurements](docs/PERFORMANCE.md) for state ownership, checks, measured tradeoffs, and remaining manual acceptance work. Historical 0.1/0.2 results remain available in the other documents.
+See [desktop architecture](docs/DESKTOP-ARCHITECTURE.md), [release validation](docs/RELEASE-VALIDATION.md), and [performance measurements](docs/PERFORMANCE.md) for state ownership, checks, measured tradeoffs, and remaining manual acceptance work. Historical source and release records remain available through the Git tags and GitHub releases.
 
 ## License
 
