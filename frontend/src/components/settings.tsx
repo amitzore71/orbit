@@ -632,7 +632,7 @@ export function SettingsView({
         {group === 'About' && (
           <div className="about-content">
             <Brand />
-            <p className="about-version">Version 0.3.1</p>
+            <p className="about-version">Version 0.4.0</p>
             <h3>Offline focus timer and task planner for Windows.</h3>
             <p>
               Built with Rust, SQLite, Tauri 2, and static Next.js. No account, no network calls,

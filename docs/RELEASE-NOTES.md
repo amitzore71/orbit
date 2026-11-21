@@ -1,3 +1,12 @@
+# Orbit 0.4.0 — 21 November 2026
+
+- Rebuilds the Obsidian and Alabaster design system with Geist Mono tabular numerals, pure-CSS UI primitives, and a bespoke inline SVG icon set.
+- Redesigns the Focus workspace, chronometer dial (with an isolated static SVG bezel and GPU-friendly ticks), Tasks, Insights, and Settings views.
+- Splits desktop widgets into a lightweight `WidgetApp` entry point and removes `motion` and `@phosphor-icons/react` to shrink bundle size and memory overhead.
+- Adds task start and end date tracking (automatic on focus start/completion plus manual date controls in the task drawer), keeps completed tasks visible in place, and includes completed tasks and dates in UTF-8 CSV exports.
+- Adds Windows 10 (64-bit) support across the installer, application manifest, and DWM backdrop fallback alongside Windows 11.
+- Defers main-window WebView creation when launched with `--tray` and tunes WebView2 browser arguments for lower background memory footprint.
+
 # Orbit 0.3.1 — 21 October 2026
 
 - Adds four accent presets, Comfortable/Compact density, and Standard/Reduced/Off animation levels with local previews, explicit Save/Discard, and Reset appearance.

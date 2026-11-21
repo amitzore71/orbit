@@ -864,10 +864,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     action: TimerAction::Start,
                 });
             }
-            // Lazy-create the main WebView only when visible so --tray runs pure Rust with ~0 WebView RAM.
-            if !tray {
-                let main = create_main_window(&handle, true)?;
-                if args_for_setup.iter().any(|a| a == "--minimized") {
+            // Lazy-create the main WebView only when visible (or when --startup-probe explicitly requests a mount check)
+            // so normal --tray runs pure Rust with ~0 WebView RAM.
+            let startup_probe = args_for_setup.iter().any(|a| a == "--startup-probe");
+            if !tray || startup_probe {
+                let main = create_main_window(&handle, !tray)?;
+                if !tray && args_for_setup.iter().any(|a| a == "--minimized") {
                     let _ = main.minimize();
                 }
             }
