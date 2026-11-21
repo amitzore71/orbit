@@ -1,83 +1,471 @@
 'use client';
-import { AnimatePresence, MotionConfig, motion } from 'motion/react';
-import { CircleDashed, ListChecks, ChartBar, SlidersHorizontal, ArrowUpRight, Minus, X, LockSimple, WarningCircle, ArrowCounterClockwise, CheckCircle } from '@phosphor-icons/react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { adapter, normalizeError, windowAction } from '@/lib/bridge';
-import { motionPreference, type MotionLevel, type Settings } from '@/lib/protocol';
+import { duration, motionPreference, type MotionLevel, type Settings } from '@/lib/protocol';
 import { useOrbit, type OrbitState } from '@/lib/use-orbit';
-import { Brand, Button, IconButton } from './ui';
-import { FocusTimer, MiniTime, TimerControls, TimerRing } from './timer';
-import { TasksView } from './tasks';
 import { ExperienceContext, WorkspaceContext } from '@/lib/experience';
-const ReportsView = lazy(() => import('./reports').then(m => ({default: m.ReportsView})));
-const SettingsView = lazy(() => import('./settings').then(m => ({default: m.SettingsView})));
+import {
+  IconAlert,
+  IconArrowUpRight,
+  IconCheckCircle,
+  IconClose,
+  IconFocus,
+  IconInsights,
+  IconLock,
+  IconMinus,
+  IconReset,
+  IconSettings,
+  IconTasks,
+} from './icons';
+import { Brand, Button, IconButton } from './ui';
+import { FocusTimer } from './timer';
+import { TasksView } from './tasks';
+
+const ReportsView = lazy(() => import('./reports').then(m => ({ default: m.ReportsView })));
+const SettingsView = lazy(() => import('./settings').then(m => ({ default: m.SettingsView })));
+
 type Page = 'focus' | 'tasks' | 'reports' | 'settings';
-export function OrbitApp({widget = false}: {widget?: boolean}) {
+
+const pageMeta: Record<Page, { crumb: string; label: string; title: string; subtitle: string }> = {
+  focus: {
+    crumb: 'Focus',
+    label: 'Session workspace',
+    title: 'One thing at a time.',
+    subtitle: 'Pick a task, run the chronometer, and track what gets done today.',
+  },
+  tasks: {
+    crumb: 'Tasks',
+    label: 'Task planner',
+    title: 'Work in order.',
+    subtitle: 'Schedule today’s queue, set estimates, and carry unfinished work forward.',
+  },
+  reports: {
+    crumb: 'Insights',
+    label: 'Focus log',
+    title: 'Time well spent.',
+    subtitle: 'Daily, weekly, and custom reports from your local session history.',
+  },
+  settings: {
+    crumb: 'Settings',
+    label: 'Configuration',
+    title: 'Workspace settings.',
+    subtitle: 'Durations, theme, shortcuts, desktop widgets, and local backups.',
+  },
+};
+
+export function OrbitApp() {
   const source = useOrbit();
-  const memory = useMemo(() => ({values: new Map<string, unknown>()}), []);
+  const memory = useMemo(() => ({ values: new Map<string, unknown>() }), []);
   const [browserReduced, setBrowserReduced] = useState(false);
-  useEffect(() => {const media = matchMedia("(prefers-reduced-motion: reduce)"); const update = () => setBrowserReduced(media.matches); update(); media.addEventListener("change", update); return () => media.removeEventListener("change", update);}, []);
+
+  useEffect(() => {
+    const media = matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setBrowserReduced(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
   const [page, setPage] = useState<Page>('focus');
   const [draft, setDraft] = useState<Settings | null>(null);
   const [confirmQuit, setConfirmQuit] = useState(false);
-  const preview = !widget ? draft ?? source.snapshot?.settings : source.snapshot?.settings;
-  const systemReduced = browserReduced || source.appearance.high_contrast || (source.appearance.system_reduced_motion ?? source.appearance.reduced_motion);
+
+  const preview = draft ?? source.snapshot?.settings;
+  const systemReduced =
+    browserReduced ||
+    source.appearance.high_contrast ||
+    (source.appearance.system_reduced_motion ?? source.appearance.reduced_motion);
   const requestedMotion = preview ? motionPreference(preview) : 'standard';
-  const motionLevel: MotionLevel = requestedMotion === 'off' ? 'off' : systemReduced ? 'reduced' : requestedMotion;
-  const state: OrbitState = {...source, appearance: {...source.appearance,
-    dark: preview?.appearance === 1 ? false : preview?.appearance === 2 ? true : source.appearance.system_dark ?? source.appearance.dark,
-    accent: preview?.accent ?? 'coral', density: preview?.density ?? 'comfortable',
-    motion_level: motionLevel, reduced_motion: motionLevel !== 'standard',
-  }};
-  const experience = useMemo(() => ({motion: motionLevel, density: state.appearance.density!, visible: state.visible}), [motionLevel, state.appearance.density, state.visible]);
+  const motionLevel: MotionLevel =
+    requestedMotion === 'off' ? 'off' : systemReduced ? 'reduced' : requestedMotion;
+
+  const state: OrbitState = {
+    ...source,
+    appearance: {
+      ...source.appearance,
+      dark:
+        preview?.appearance === 1
+          ? false
+          : preview?.appearance === 2
+            ? true
+            : (source.appearance.system_dark ?? source.appearance.dark),
+      accent: preview?.accent ?? 'coral',
+      density: preview?.density ?? 'comfortable',
+      motion_level: motionLevel,
+      reduced_motion: motionLevel !== 'standard',
+    },
+  };
+
+  const experience = useMemo(
+    () => ({ motion: motionLevel, density: state.appearance.density!, visible: state.visible }),
+    [motionLevel, state.appearance.density, state.visible],
+  );
+
   const baseline = useRef('');
-  const draftRef = useRef<Settings | null>(null); draftRef.current = draft;
-  const native = (action: string) => {void windowAction(action).catch(e => state.setError(normalizeError(e)));};
-  useEffect(() => {if (!widget && state.snapshot) void adapter().invoke('frontend_ready').catch(() => {});}, [widget, !!state.snapshot]);
-  useEffect(() => {if (!widget && state.snapshot) {void adapter().invoke('set_timer_visibility', {visible: page === 'focus'}).catch(() => {}); if (page === 'focus') void state.refresh();}}, [page, widget, !!state.snapshot, state.refresh]);
+  const draftRef = useRef<Settings | null>(null);
+  draftRef.current = draft;
+
+  const native = (action: string) => {
+    void windowAction(action).catch(e => state.setError(normalizeError(e)));
+  };
+
+  useEffect(() => {
+    if (state.snapshot) void adapter().invoke('frontend_ready').catch(() => {});
+  }, [!!state.snapshot]);
+
+  useEffect(() => {
+    if (state.snapshot) {
+      void adapter()
+        .invoke('set_timer_visibility', { visible: page === 'focus' })
+        .catch(() => {});
+      if (page === 'focus') void state.refresh();
+    }
+  }, [page, !!state.snapshot, state.refresh]);
+
   useEffect(() => {
     const settings = state.snapshot?.settings;
     if (!settings) return;
     const saved = JSON.stringify(settings);
     if (saved !== baseline.current) {
-      // A durable acknowledgement advances the saved baseline without erasing a newer draft.
-      if (!draftRef.current || JSON.stringify(draftRef.current) === baseline.current) setDraft({...settings});
+      if (!draftRef.current || JSON.stringify(draftRef.current) === baseline.current) {
+        setDraft({ ...settings });
+      }
       baseline.current = saved;
     }
   }, [state.snapshot?.settings]);
-  const dirty = !!draft && !!state.snapshot && JSON.stringify(draft) !== JSON.stringify(state.snapshot.settings);
-  useEffect(() => {if (!widget && state.snapshot) void adapter().invoke('set_settings_dirty', {dirty}).catch(e => state.setError(normalizeError(e)));}, [dirty, widget, !!state.snapshot]);
+
+  const dirty =
+    !!draft &&
+    !!state.snapshot &&
+    JSON.stringify(draft) !== JSON.stringify(state.snapshot.settings);
+
   useEffect(() => {
-    if (widget) return;
-    let cleanup: (() => void) | undefined; let ended = false;
-    void adapter().listen('orbit://confirm-quit', () => setConfirmQuit(true)).then(fn => {if (ended) fn(); else cleanup = fn;}).catch(() => {});
-    return () => {ended = true; cleanup?.();};
-  }, [widget]);
-  const theme = state.appearance.high_contrast ? 'contrast' : state.appearance.dark ? 'dark' : 'light';
-  return <WorkspaceContext.Provider value={memory}><ExperienceContext.Provider value={experience}><MotionConfig reducedMotion={state.appearance.reduced_motion ? 'always' : 'user'} skipAnimations={motionLevel === 'off' || !state.visible} transition={{duration: motionLevel === 'reduced' ? .1 : .22, ease: [.22, 1, .36, 1]}}><div className={`orbit-app ${widget ? 'widget-app' : ''}`} data-theme={theme} data-accent={state.appearance.accent} data-density={state.appearance.density} data-motion={motionLevel} data-mica={!!state.appearance.mica_active} data-reduced-motion={state.appearance.reduced_motion}>
-    {!state.snapshot || !state.timer ? <div className="connection-screen"><Brand/><div className="loading-orbit" aria-hidden="true"/><h1>{state.error ? 'Your workspace is taking a moment.' : 'A little room for focus.'}</h1><p>{state.error ? 'Open the desktop application to connect to your local workspace.' : 'Opening your private workspace…'}</p>{state.error && <><p className="connection-error">{state.error.message}</p><Button onClick={() => void state.refresh()}>Try again</Button></>}</div> : widget ? <Widget state={state}/> : <>
-      <a className="skip-link" href="#main">Skip to workspace</a>
-      <aside className="sidebar"><div className="sidebar-brand" data-tauri-drag-region><Brand/></div><div className="workspace-label eyebrow">YOUR SPACE</div><nav aria-label="Main navigation">{([['focus', CircleDashed, 'Focus'], ['tasks', ListChecks, 'Tasks'], ['reports', ChartBar, 'Insights']] as const).map(([id, Icon, label]) => <button key={id} title={label} className={page === id ? 'active' : ''} aria-current={page === id ? 'page' : undefined} onClick={() => setPage(id)}>{page === id && <motion.span className="nav-selection" layoutId="navigation" transition={{type: 'spring', stiffness: 350, damping: 35}}/>}<Icon size={20} weight={page === id ? 'duotone' : 'regular'}/><span>{label}</span>{id === 'tasks' && <small>{state.snapshot!.tasks.filter(t => !t.deleted && t.planned_for === state.snapshot!.today).length}</small>}</button>)}</nav><div className="sidebar-bottom"><div className="sidebar-thought"><span className="little-star">✳</span><p>Less noise.<br/>More meaning.</p></div><button title="Settings" className={`settings-link ${page === 'settings' ? 'active' : ''}`} onClick={() => setPage('settings')}><SlidersHorizontal size={19}/><span>Settings</span>{dirty && <i className="draft-dot"/>}</button><div className="local-status"><span className="status-dot"/><span>Only on this device</span><LockSimple size={12}/></div></div></aside>
-      <div className="app-body"><header className="titlebar" data-tauri-drag-region><div className="breadcrumbs"><span>Workspace</span><span>/</span><strong>{page === 'focus' ? 'Focus' : page === 'tasks' ? 'Tasks' : page === 'reports' ? 'Insights' : 'Settings'}</strong></div><div className="titlebar-right"><span className="saved-status"><span className={state.pending ? 'pending-dot' : 'status-dot'}/>{state.snapshot.storage_blocked ? 'Saving paused' : state.pending ? 'Saving…' : 'Everything’s local'}</span><div className="window-controls"><IconButton label="Minimize Orbit" onClick={() => native('minimize')}><Minus size={15}/></IconButton><IconButton label="Hide Orbit to tray" onClick={() => native('hide')}><X size={15}/></IconButton></div></div></header>
-      <main id="main" tabIndex={-1}><div className="page-heading"><div><span className="eyebrow">{page === 'focus' ? 'A LITTLE INTENTION GOES A LONG WAY' : page === 'tasks' ? 'SMALL STEPS. REAL PROGRESS.' : page === 'reports' ? 'YOUR EFFORT, IN PERSPECTIVE' : 'YOUR ORBIT, YOUR WAY'}</span><h1>{page === 'focus' ? 'One thing at a time.' : page === 'tasks' ? 'Your work, in order.' : page === 'reports' ? 'Time well spent.' : 'Make yourself at home.'}</h1><p>{page === 'focus' ? 'Choose your work. Give it your full attention.' : page === 'tasks' ? 'A place for what matters today—and what can wait.' : page === 'reports' ? 'See the quiet progress that adds up.' : 'A few thoughtful details, just the way you like them.'}</p></div><span className="today-date">{new Date(`${state.snapshot.today}T12:00:00`).toLocaleDateString('en', {month: 'short', day: 'numeric'})}<span>{new Date(`${state.snapshot.today}T12:00:00`).toLocaleDateString('en', {weekday: 'long'})}</span></span></div>
-      {state.snapshot.storage_blocked && <div className="storage-banner" role="alert"><WarningCircle size={21}/><div><strong>Your work is waiting to be saved.</strong><span>The timer is paused. Accepted changes are retained for retry.</span></div><Button onClick={() => state.act({type: 'retry_saving'})} disabled={!!state.pending}><ArrowCounterClockwise/>Retry saving</Button></div>}
-      {state.snapshot.recovery_message && <details className="recovery-notice"><summary>Recovered session</summary><p>{state.snapshot.recovery_message}</p></details>}
-      <motion.div key={page} className="page-content" initial={{opacity: 0, y: motionLevel === 'standard' ? 6 : 0}} animate={{opacity: 1, y: 0}} transition={{duration: motionLevel === 'off' ? 0 : motionLevel === 'reduced' ? .1 : .2}}><Suspense fallback={<div className="screen-loading" role="status">Opening workspace…</div>}>{page === 'focus' ? <div className="focus-workspace"><FocusTimer state={state}/><TasksView state={state} compact onViewAll={() => setPage('tasks')}/></div> : page === 'tasks' ? <TasksView state={state}/> : page === 'reports' ? <ReportsView state={state}/> : draft && <SettingsView state={state} draft={draft} setDraft={setDraft}/>}</Suspense></motion.div>
-      <footer className="app-footer"><span>One session. One small step forward.</span><button onClick={() => native('hide')}>Keep focusing in the background <ArrowUpRight size={13}/></button></footer></main></div>
-      {confirmQuit && <div className="dialog-scrim"><section role="alertdialog" aria-modal="true" aria-labelledby="quit-title" className="quit-dialog" onKeyDown={e => {
-        if (e.key === 'Escape') {e.preventDefault(); setConfirmQuit(false); return;}
-        if (e.key !== 'Tab') return;
-        const buttons = e.currentTarget.querySelectorAll<HTMLButtonElement>('button');
-        const first = buttons[0]; const last = buttons[buttons.length - 1];
-        if (e.shiftKey && document.activeElement === first) {e.preventDefault(); last.focus();}
-        else if (!e.shiftKey && document.activeElement === last) {e.preventDefault(); first.focus();}
-      }}><h2 id="quit-title">Keep your changes?</h2><p>Your settings have unsaved changes. You can return to them or discard them before exiting.</p><div className="button-pair"><Button autoFocus primary onClick={() => {setConfirmQuit(false); setPage('settings');}}>Return to settings</Button><Button onClick={() => native('discard_and_quit')}>Discard & quit</Button></div></section></div>}
-    </>}
-    <AnimatePresence>{state.error && state.snapshot && <motion.div className="toast error-toast" role="alert" initial={{opacity: 0, x: '-50%', y: 12}} animate={{opacity: 1, x: '-50%', y: 0}} exit={{opacity: 0, x: '-50%'}}><WarningCircle size={20}/><div>{state.error.message}{state.error.accepted && <small>This change was accepted. Use Retry saving rather than submitting it again.</small>}</div><IconButton label="Dismiss error" onClick={() => state.setError(null)}><X/></IconButton></motion.div>}{state.notice && <motion.div className="toast" role="status" initial={{opacity: 0, x: '-50%', y: 12}} animate={{opacity: 1, x: '-50%', y: 0}} exit={{opacity: 0, x: '-50%'}}><CheckCircle size={20}/><span>{state.notice}</span><IconButton label="Dismiss notification" onClick={() => state.setNotice('')}><X/></IconButton></motion.div>}</AnimatePresence>
-  </div></MotionConfig></ExperienceContext.Provider></WorkspaceContext.Provider>;
-}
-function Widget({state}: {state: OrbitState}) {
-  const [kind, setKind] = useState(0);
-  useEffect(() => {setKind(Number(new URLSearchParams(window.location.search).get('kind') || 0));}, []);
-  return <div className={`desktop-widget widget-kind-${kind}`}><header data-tauri-drag-region><Brand small/><span>{kind === 1 ? 'Today’s plan' : state.timer?.mode === 'Focus' ? 'A little focus' : 'A little breathing room'}</span><IconButton label="Close widget" onClick={() => {void windowAction('close');}}><X size={14}/></IconButton></header>{kind === 1 ? <TasksView state={state} compact onViewAll={() => {void windowAction('show');}}/> : kind === 0 ? <><TimerRing state={state} mini/><TimerControls state={state} small/></> : <div className="mini-widget-content"><div><MiniTime state={state}/><span>{state.timer?.running ? 'In your flow' : state.timer?.started ? 'Paused' : 'Ready when you are'}</span></div><TimerControls state={state} small/></div>}</div>;
+    if (state.snapshot) {
+      void adapter()
+        .invoke('set_settings_dirty', { dirty })
+        .catch(e => state.setError(normalizeError(e)));
+    }
+  }, [dirty, !!state.snapshot]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    let ended = false;
+    void adapter()
+      .listen('orbit://confirm-quit', () => setConfirmQuit(true))
+      .then(fn => {
+        if (ended) fn();
+        else cleanup = fn;
+      })
+      .catch(() => {});
+    return () => {
+      ended = true;
+      cleanup?.();
+    };
+  }, []);
+
+  const theme = state.appearance.high_contrast
+    ? 'contrast'
+    : state.appearance.dark
+      ? 'dark'
+      : 'light';
+
+  const todayCount = useMemo(
+    () =>
+      state.snapshot
+        ? state.snapshot.tasks.filter(
+            t => !t.deleted && t.planned_for === state.snapshot!.today,
+          ).length
+        : 0,
+    [state.snapshot],
+  );
+
+  const meta = pageMeta[page];
+
+  return (
+    <WorkspaceContext.Provider value={memory}>
+      <ExperienceContext.Provider value={experience}>
+        <div
+          className="orbit-app"
+          data-theme={theme}
+          data-accent={state.appearance.accent}
+          data-density={state.appearance.density}
+          data-motion={motionLevel}
+          data-mica={!!state.appearance.mica_active}
+          data-reduced-motion={state.appearance.reduced_motion}
+        >
+          {!state.snapshot || !state.timer ? (
+            <div className="connection-screen">
+              <Brand />
+              <div className="loading-orbit" aria-hidden="true" />
+              <h1>
+                {state.error ? 'Workspace connection interrupted.' : 'Opening your workspace.'}
+              </h1>
+              <p>
+                {state.error
+                  ? 'Launch the Orbit desktop app to connect to your local SQLite database.'
+                  : 'Loading your tasks, settings, and timer checkpoint…'}
+              </p>
+              {state.error && (
+                <>
+                  <p className="connection-error">{state.error.message}</p>
+                  <Button onClick={() => void state.refresh()}>Try again</Button>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <a className="skip-link" href="#main">
+                Skip to workspace
+              </a>
+              <aside className="sidebar">
+                <div className="sidebar-brand" data-tauri-drag-region>
+                  <Brand />
+                </div>
+                <div className="workspace-label">Workspace</div>
+                <nav aria-label="Main navigation">
+                  {(
+                    [
+                      ['focus', IconFocus, 'Focus'],
+                      ['tasks', IconTasks, 'Tasks'],
+                      ['reports', IconInsights, 'Insights'],
+                    ] as const
+                  ).map(([id, Icon, label]) => (
+                    <button
+                      key={id}
+                      title={label}
+                      className={page === id ? 'active' : ''}
+                      aria-current={page === id ? 'page' : undefined}
+                      onClick={() => setPage(id)}
+                    >
+                      <Icon size={18} filled={page === id} />
+                      <span>{label}</span>
+                      {id === 'tasks' && <small>{todayCount}</small>}
+                    </button>
+                  ))}
+                </nav>
+
+                <div className="sidebar-bottom">
+                  <div className="sidebar-pulse" aria-label="Today summary">
+                    <div className="pulse-row">
+                      <span>Today</span>
+                      <strong className="mono-meta">{duration(state.snapshot.today_ms)}</strong>
+                    </div>
+                    <div className="pulse-bar" aria-hidden="true">
+                      <i
+                        style={{
+                          transform: `scaleX(${Math.min(
+                            1,
+                            state.snapshot.today_completed /
+                              Math.max(state.snapshot.settings.long_interval, 1),
+                          )})`,
+                        }}
+                      />
+                    </div>
+                    <span className="pulse-meta">
+                      {state.snapshot.today_completed}{' '}
+                      {state.snapshot.today_completed === 1 ? 'session' : 'sessions'} completed
+                    </span>
+                  </div>
+
+                  <button
+                    title="Settings"
+                    className={`settings-link ${page === 'settings' ? 'active' : ''}`}
+                    onClick={() => setPage('settings')}
+                  >
+                    <IconSettings size={18} />
+                    <span>Settings</span>
+                    {dirty && <i className="draft-dot" />}
+                  </button>
+
+                  <div className="local-status">
+                    <span className="status-dot" />
+                    <span>Local SQLite</span>
+                    <IconLock size={12} />
+                  </div>
+                </div>
+              </aside>
+
+              <div className="app-body">
+                <header className="titlebar" data-tauri-drag-region>
+                  <div className="breadcrumbs">
+                    <span>Orbit</span>
+                    <span className="crumb-sep">/</span>
+                    <strong>{meta.crumb}</strong>
+                  </div>
+                  <div className="titlebar-right">
+                    <span className="saved-status">
+                      <span className={state.pending ? 'pending-dot' : 'status-dot'} />
+                      {state.snapshot.storage_blocked
+                        ? 'Saving paused'
+                        : state.pending
+                          ? 'Saving…'
+                          : 'Stored on device'}
+                    </span>
+                    <div className="window-controls">
+                      <IconButton label="Minimize Orbit" onClick={() => native('minimize')}>
+                        <IconMinus size={14} />
+                      </IconButton>
+                      <IconButton label="Hide Orbit to tray" onClick={() => native('hide')}>
+                        <IconClose size={14} />
+                      </IconButton>
+                    </div>
+                  </div>
+                </header>
+
+                <main id="main" tabIndex={-1}>
+                  <div className="page-heading">
+                    <div>
+                      <span className="eyebrow">{meta.label}</span>
+                      <h1>{meta.title}</h1>
+                      <p>{meta.subtitle}</p>
+                    </div>
+                    <span className="today-date">
+                      {new Date(`${state.snapshot.today}T12:00:00`).toLocaleDateString('en', {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                      <span>
+                        {new Date(`${state.snapshot.today}T12:00:00`).toLocaleDateString('en', {
+                          weekday: 'long',
+                        })}
+                      </span>
+                    </span>
+                  </div>
+
+                  {state.snapshot.storage_blocked && (
+                    <div className="storage-banner" role="alert">
+                      <IconAlert size={20} />
+                      <div>
+                        <strong>Your work is waiting to be saved.</strong>
+                        <span>The timer is paused. Accepted changes are retained for retry.</span>
+                      </div>
+                      <Button
+                        onClick={() => state.act({ type: 'retry_saving' })}
+                        disabled={!!state.pending}
+                      >
+                        <IconReset size={15} />
+                        Retry saving
+                      </Button>
+                    </div>
+                  )}
+
+                  {state.snapshot.recovery_message && (
+                    <details className="recovery-notice">
+                      <summary>Recovered session</summary>
+                      <p>{state.snapshot.recovery_message}</p>
+                    </details>
+                  )}
+
+                  <div key={page} className="page-content">
+                    <Suspense
+                      fallback={
+                        <div className="screen-loading" role="status">
+                          Loading view…
+                        </div>
+                      }
+                    >
+                      {page === 'focus' ? (
+                        <div className="focus-workspace">
+                          <FocusTimer state={state} />
+                          <TasksView state={state} compact onViewAll={() => setPage('tasks')} />
+                        </div>
+                      ) : page === 'tasks' ? (
+                        <TasksView state={state} />
+                      ) : page === 'reports' ? (
+                        <ReportsView state={state} />
+                      ) : (
+                        draft && <SettingsView state={state} draft={draft} setDraft={setDraft} />
+                      )}
+                    </Suspense>
+                  </div>
+
+                  <footer className="app-footer">
+                    <span>Offline · No account or telemetry</span>
+                    <button onClick={() => native('hide')}>
+                      Run in system tray <IconArrowUpRight size={13} />
+                    </button>
+                  </footer>
+                </main>
+              </div>
+
+              {confirmQuit && (
+                <div className="dialog-scrim">
+                  <section
+                    role="alertdialog"
+                    aria-modal="true"
+                    aria-labelledby="quit-title"
+                    className="quit-dialog"
+                    onKeyDown={e => {
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setConfirmQuit(false);
+                        return;
+                      }
+                      if (e.key !== 'Tab') return;
+                      const buttons = e.currentTarget.querySelectorAll<HTMLButtonElement>('button');
+                      const first = buttons[0];
+                      const last = buttons[buttons.length - 1];
+                      if (e.shiftKey && document.activeElement === first) {
+                        e.preventDefault();
+                        last.focus();
+                      } else if (!e.shiftKey && document.activeElement === last) {
+                        e.preventDefault();
+                        first.focus();
+                      }
+                    }}
+                  >
+                    <h2 id="quit-title">Keep your changes?</h2>
+                    <p>
+                      Your settings have unsaved changes. Return to save them or discard them before
+                      exiting.
+                    </p>
+                    <div className="button-pair">
+                      <Button
+                        autoFocus
+                        primary
+                        onClick={() => {
+                          setConfirmQuit(false);
+                          setPage('settings');
+                        }}
+                      >
+                        Return to settings
+                      </Button>
+                      <Button onClick={() => native('discard_and_quit')}>Discard &amp; quit</Button>
+                    </div>
+                  </section>
+                </div>
+              )}
+            </>
+          )}
+
+          {state.error && state.snapshot && (
+            <div className="toast error-toast" role="alert">
+              <IconAlert size={18} />
+              <div>
+                {state.error.message}
+                {state.error.accepted && (
+                  <small>
+                    This change was accepted. Use Retry saving rather than submitting it again.
+                  </small>
+                )}
+              </div>
+              <IconButton label="Dismiss error" onClick={() => state.setError(null)}>
+                <IconClose size={14} />
+              </IconButton>
+            </div>
+          )}
+
+          {state.notice && (
+            <div className="toast" role="status">
+              <IconCheckCircle size={18} />
+              <span>{state.notice}</span>
+              <IconButton label="Dismiss notification" onClick={() => state.setNotice('')}>
+                <IconClose size={14} />
+              </IconButton>
+            </div>
+          )}
+        </div>
+      </ExperienceContext.Provider>
+    </WorkspaceContext.Provider>
+  );
 }
