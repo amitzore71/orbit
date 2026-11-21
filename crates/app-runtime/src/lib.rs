@@ -280,9 +280,18 @@ impl Runtime {
         let previous = self.timer.clone();
         let now = self.clock.now();
         let effects = self.timer.dispatch(command, now);
-        let tasks_changed = effects
-            .iter()
-            .any(|e| matches!(e, Effect::SessionEnded { .. }));
+        let checkpoint = self.timer.checkpoint(now);
+        let bound_needs_start_date = checkpoint.started
+            && checkpoint.mode == focus_core::Mode::Focus
+            && checkpoint.bound_task.is_some_and(|id| {
+                self.tasks
+                    .iter()
+                    .any(|t| t.id == id && t.start_date.is_none())
+            });
+        let tasks_changed = bound_needs_start_date
+            || effects
+                .iter()
+                .any(|e| matches!(e, Effect::SessionEnded { .. }));
         let completed = effects
             .iter()
             .filter_map(|e| {
@@ -296,7 +305,7 @@ impl Runtime {
         if !matches!(command, Command::Tick) || !effects.is_empty() {
             let result = self.store(Operation::Transition {
                 effects,
-                checkpoint: self.timer.checkpoint(now),
+                checkpoint,
             });
             if let Err(e) = result {
                 if !e.accepted {
@@ -415,15 +424,35 @@ impl Runtime {
                 estimate,
                 today,
                 start,
+                start_date,
+                end_date,
             } => {
+                let start_date = if start
+                    && start_date
+                        .as_deref()
+                        .map(str::trim)
+                        .unwrap_or("")
+                        .is_empty()
+                    && end_date
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .is_none_or(|e| e >= self.today.as_str())
+                {
+                    Some(self.today.clone())
+                } else {
+                    start_date
+                };
                 if let Response::TaskCreated(task) = self.store(Operation::CreateTask {
                     title,
                     estimate,
                     today,
+                    start_date,
+                    end_date,
                 })? {
                     let id = task.id;
                     self.tasks.push(task);
-                    self.changed(&["tasks"]);
+                    self.changed(&["tasks", "reports"]);
                     if start {
                         self.transition(Command::StartTask(id))?;
                     }
@@ -434,15 +463,19 @@ impl Runtime {
                 id,
                 title,
                 estimate,
+                start_date,
+                end_date,
             } => {
                 let id = self.id(&id, false)?;
                 self.store(Operation::EditTask {
                     id,
                     title,
                     estimate,
+                    start_date,
+                    end_date,
                 })?;
                 self.refresh_tasks()?;
-                self.changed(&["tasks"]);
+                self.changed(&["tasks", "reports"]);
             }
             AppCommand::Task { id, action } => {
                 let id = self.id(&id, false)?;

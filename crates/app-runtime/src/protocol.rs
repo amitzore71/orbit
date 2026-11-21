@@ -25,6 +25,8 @@ pub struct TaskDto {
     pub deleted: bool,
     pub planned_for: Option<String>,
     pub today_order: i64,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
 }
 impl From<&Task> for TaskDto {
     fn from(t: &Task) -> Self {
@@ -37,6 +39,8 @@ impl From<&Task> for TaskDto {
             deleted: t.deleted,
             planned_for: t.planned_for.clone(),
             today_order: t.today_order,
+            start_date: t.start_date.clone(),
+            end_date: t.end_date.clone(),
         }
     }
 }
@@ -98,6 +102,9 @@ pub struct ReportTask {
     pub deleted: bool,
     pub active_ms: u64,
     pub completed: u32,
+    pub done: bool,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReportDto {
@@ -133,6 +140,9 @@ impl From<Report> for ReportDto {
                     deleted: t.deleted,
                     active_ms: t.active_ms,
                     completed: t.completed,
+                    done: t.done,
+                    start_date: t.start_date,
+                    end_date: t.end_date,
                 })
                 .collect(),
         }
@@ -185,11 +195,19 @@ pub enum AppCommand {
         estimate: u32,
         today: bool,
         start: bool,
+        #[serde(default)]
+        start_date: Option<String>,
+        #[serde(default)]
+        end_date: Option<String>,
     },
     EditTask {
         id: String,
         title: String,
         estimate: u32,
+        #[serde(default)]
+        start_date: Option<String>,
+        #[serde(default)]
+        end_date: Option<String>,
     },
     Task {
         id: String,

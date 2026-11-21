@@ -117,6 +117,8 @@ fn backup_restore_round_trip_is_paused_and_keeps_this_machines_startup_choice() 
             title: "Saved work".into(),
             estimate: 3,
             today: true,
+            start_date: None,
+            end_date: None,
         })
         .unwrap();
     let mut timer = focus_core::Timer::new(Settings::default());
@@ -270,4 +272,85 @@ fn custom_report_and_csv_reconcile_with_unassigned_and_deleted_history() {
     assert!(csv.contains("'=Danger, 日本語"));
     assert!(csv.contains("90000,0"));
     assert!(store.custom_report("2026-10-20", "2026-10-19").is_err());
+}
+
+#[test]
+fn manual_dates_and_completed_tasks_without_sessions_appear_in_reports_and_csv_export() {
+    let dir = directory();
+    let mut store = Store::open(dir.join("orbit.db")).unwrap();
+    let today = local_date();
+    // Create a task without dates, complete it without running any timer session, then add start/end dates manually.
+    store
+        .process(Operation::CreateTask {
+            title: "Completed without timer".into(),
+            estimate: 2,
+            today: true,
+            start_date: None,
+            end_date: None,
+        })
+        .unwrap();
+    let initial = &store.tasks().unwrap()[0];
+    assert!(initial.start_date.is_none());
+    assert!(initial.end_date.is_none());
+    let id = initial.id;
+
+    // Completing the task auto-captures end_date if not captured yet, while start_date can be set manually.
+    store.process(Operation::ToggleTaskDone(id)).unwrap();
+    let after_done = &store.tasks().unwrap()[0];
+    assert!(after_done.done);
+    assert!(after_done.start_date.is_none());
+    assert_eq!(after_done.end_date.as_deref(), Some(today.as_str()));
+
+    // Manually set start_date and end_date.
+    store
+        .process(Operation::EditTask {
+            id,
+            title: "Completed without timer".into(),
+            estimate: 2,
+            start_date: Some(today.clone()),
+            end_date: Some(today.clone()),
+        })
+        .unwrap();
+    let after_edit = &store.tasks().unwrap()[0];
+    assert_eq!(after_edit.start_date.as_deref(), Some(today.as_str()));
+    assert_eq!(after_edit.end_date.as_deref(), Some(today.as_str()));
+
+    // Invalid date ordering is rejected.
+    assert!(
+        store
+            .process(Operation::EditTask {
+                id,
+                title: "Completed without timer".into(),
+                estimate: 2,
+                start_date: Some("2026-11-22".into()),
+                end_date: Some("2026-11-20".into()),
+            })
+            .is_err()
+    );
+
+    // Even with 0 focus sessions, the completed task appears in the report and the exported CSV for Excel.
+    let report = store.custom_report(&today, &today).unwrap();
+    let reported = report
+        .tasks
+        .iter()
+        .find(|t| t.task_id == Some(id))
+        .expect("completed task must appear in report");
+    assert!(reported.done);
+    assert_eq!(reported.active_ms, 0);
+    assert_eq!(reported.start_date.as_deref(), Some(today.as_str()));
+    assert_eq!(reported.end_date.as_deref(), Some(today.as_str()));
+
+    let csv_path = dir.join("tasks-excel.csv");
+    store
+        .export_report(
+            csv_path.clone(),
+            Period::Day,
+            0,
+            today.clone(),
+            today.clone(),
+        )
+        .unwrap();
+    let csv = std::fs::read_to_string(csv_path).unwrap();
+    assert!(csv.contains("record,period,current_utc_offset,task_id,title,active_ms,completed,deleted,done,start_date,end_date"));
+    assert!(csv.contains("\"Completed without timer\",0,0,false,true,"));
 }

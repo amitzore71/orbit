@@ -126,11 +126,28 @@ impl Store {
         start: String,
         end: String,
     ) -> Result<Response> {
-        let report = if start.is_empty() && end.is_empty() {
+        let mut report = if start.is_empty() && end.is_empty() {
             self.report(period, offset)?
         } else {
             self.custom_report(&start, &end)?
         };
+        for task in Self::all_tasks_in(&self.db)? {
+            if !task.deleted
+                && (task.done || task.start_date.is_some() || task.end_date.is_some())
+                && !report.tasks.iter().any(|t| t.task_id == Some(task.id))
+            {
+                report.tasks.push(TaskReport {
+                    task_id: Some(task.id),
+                    title: task.title,
+                    deleted: false,
+                    active_ms: 0,
+                    completed: 0,
+                    done: task.done,
+                    start_date: task.start_date,
+                    end_date: task.end_date,
+                });
+            }
+        }
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -141,30 +158,33 @@ impl Store {
             file.write_all(b"\xef\xbb\xbf")?;
             writeln!(
                 file,
-                "record,period,current_utc_offset,task_id,title,active_ms,completed,deleted"
+                "record,period,current_utc_offset,task_id,title,active_ms,completed,deleted,done,start_date,end_date"
             )?;
             let zone = csv_cell(&Local::now().offset().to_string());
             let title = csv_cell(&report.title);
             writeln!(
                 file,
-                "summary,{title},{zone},,,{},{},",
+                "summary,{title},{zone},,,{},{},,,,",
                 report.active_ms, report.completed
             )?;
             for task in report.tasks {
                 writeln!(
                     file,
-                    "task,{title},{zone},{},{},{},{},{}",
+                    "task,{title},{zone},{},{},{},{},{},{},{},{}",
                     task.task_id.map(|id| id.to_string()).unwrap_or_default(),
                     csv_cell(&task.title),
                     task.active_ms,
                     task.completed,
-                    task.deleted
+                    task.deleted,
+                    task.done,
+                    task.start_date.as_deref().map(csv_cell).unwrap_or_default(),
+                    task.end_date.as_deref().map(csv_cell).unwrap_or_default()
                 )?;
             }
             for day in report.days {
                 writeln!(
                     file,
-                    "day,{title},{zone},,{},{},{},",
+                    "day,{title},{zone},,{},{},{},,,,",
                     csv_cell(&day.label),
                     day.active_ms,
                     day.completed

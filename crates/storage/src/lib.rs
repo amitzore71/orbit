@@ -34,6 +34,16 @@ use snapshots::{
 pub fn local_date() -> String {
     Local::now().date_naive().to_string()
 }
+pub fn local_date_from_ms(utc_ms: i64) -> String {
+    if utc_ms <= 0 {
+        return local_date();
+    }
+    Local
+        .timestamp_millis_opt(utc_ms)
+        .single()
+        .map(|t| t.date_naive().to_string())
+        .unwrap_or_else(local_date)
+}
 #[derive(Clone, Debug, Default)]
 pub struct Task {
     pub id: i64,
@@ -44,6 +54,8 @@ pub struct Task {
     pub deleted: bool,
     pub planned_for: Option<String>,
     pub today_order: i64,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Period {
@@ -64,6 +76,9 @@ pub struct TaskReport {
     pub deleted: bool,
     pub active_ms: u64,
     pub completed: u32,
+    pub done: bool,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
 }
 impl TaskReport {
     fn new(task_id: Option<i64>, title: Option<String>, deleted: bool) -> Self {
@@ -115,11 +130,15 @@ pub enum Operation {
         title: String,
         estimate: u32,
         today: bool,
+        start_date: Option<String>,
+        end_date: Option<String>,
     },
     EditTask {
         id: i64,
         title: String,
         estimate: u32,
+        start_date: Option<String>,
+        end_date: Option<String>,
     },
     ToggleTaskDone(i64),
     DeleteTask(i64),
@@ -406,14 +425,25 @@ impl Drop for Worker {
 
 fn validate_operation(operation: &Operation) -> Result<()> {
     match operation {
-        Operation::AddTask { title, estimate }
-        | Operation::CreateTask {
-            title, estimate, ..
+        Operation::AddTask { title, estimate } => {
+            valid_task(title, *estimate)?;
+        }
+        Operation::CreateTask {
+            title,
+            estimate,
+            start_date,
+            end_date,
+            ..
         }
         | Operation::EditTask {
-            title, estimate, ..
+            title,
+            estimate,
+            start_date,
+            end_date,
+            ..
         } => {
             valid_task(title, *estimate)?;
+            valid_task_dates(start_date.as_deref(), end_date.as_deref())?;
         }
         Operation::Settings(settings) => settings.validate()?,
         Operation::Widget { index, .. } if *index >= 3 => return Err("Invalid widget.".into()),
@@ -524,10 +554,38 @@ impl Store {
             }
             tx.commit().map_err(|e| e.to_string())?;
         }
+        Self::ensure_task_date_columns(&db)?;
         Ok(Self {
             db,
             pending: VecDeque::new(),
         })
+    }
+    fn ensure_task_date_columns(db: &Connection) -> Result<()> {
+        let mut stmt = db
+            .prepare("PRAGMA table_info(tasks)")
+            .map_err(|e| e.to_string())?;
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| e.to_string())?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        let has_start = columns.iter().any(|c| c == "start_date");
+        let has_end = columns.iter().any(|c| c == "end_date");
+        if !has_start {
+            if let Err(e) = db.execute("ALTER TABLE tasks ADD COLUMN start_date TEXT", [])
+                && !e.to_string().contains("duplicate column name")
+            {
+                return Err(e.to_string());
+            }
+        }
+        if !has_end {
+            if let Err(e) = db.execute("ALTER TABLE tasks ADD COLUMN end_date TEXT", [])
+                && !e.to_string().contains("duplicate column name")
+            {
+                return Err(e.to_string());
+            }
+        }
+        Ok(())
     }
     fn get<T: serde::de::DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         let value: Option<String> = self
@@ -575,18 +633,46 @@ impl Store {
             .collect())
     }
     fn all_tasks_in(db: &Connection) -> Result<Vec<Task>> {
-        let mut query = db.prepare("SELECT t.id,t.title,t.estimate,t.done,(SELECT COUNT(*) FROM sessions s WHERE s.task_id=t.id AND s.completed=1),t.deleted,t.planned_for,t.today_order FROM tasks t ORDER BY done,today_order,id").map_err(|e| e.to_string())?;
+        let mut query = db
+            .prepare(
+                "SELECT t.id,t.title,t.estimate,t.done,
+                    (SELECT COUNT(*) FROM sessions s WHERE s.task_id=t.id AND s.completed=1),
+                    t.deleted,t.planned_for,t.today_order,t.start_date,t.end_date,
+                    (SELECT MIN(i.start_ms) FROM intervals i WHERE i.task_id=t.id),
+                    (SELECT MAX(i.end_ms) FROM intervals i WHERE i.task_id=t.id)
+             FROM tasks t ORDER BY done,today_order,id",
+            )
+            .map_err(|e| e.to_string())?;
         query
             .query_map([], |row| {
+                let done: bool = row.get(3)?;
+                let start_date = row.get::<_, Option<String>>(8)?.or_else(|| {
+                    row.get::<_, Option<i64>>(10)
+                        .ok()
+                        .flatten()
+                        .map(local_date_from_ms)
+                });
+                let end_date = row.get::<_, Option<String>>(9)?.or_else(|| {
+                    if done {
+                        row.get::<_, Option<i64>>(11)
+                            .ok()
+                            .flatten()
+                            .map(local_date_from_ms)
+                    } else {
+                        None
+                    }
+                });
                 Ok(Task {
                     id: row.get(0)?,
                     title: row.get(1)?,
                     estimate: row.get(2)?,
-                    done: row.get(3)?,
+                    done,
                     completed: row.get(4)?,
                     deleted: row.get(5)?,
                     planned_for: row.get(6)?,
                     today_order: row.get(7)?,
+                    start_date,
+                    end_date,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -647,6 +733,14 @@ impl Store {
                             active_ms,
                         } => {
                             tx.execute("INSERT INTO intervals(session_id,task_id,start_ms,end_ms,active_ms) VALUES(?1,?2,?3,?4,?5)", params![session_id as i64,task_id,start_utc_ms,end_utc_ms,active_ms as i64]).map_err(sql)?;
+                            if let Some(tid) = task_id {
+                                let day = local_date_from_ms(start_utc_ms);
+                                tx.execute(
+                                    "UPDATE tasks SET start_date=COALESCE(start_date,?2) WHERE id=?1 AND (end_date IS NULL OR end_date>=?2)",
+                                    params![tid, day],
+                                )
+                                .map_err(sql)?;
+                            }
                         }
                         Effect::SessionEnded {
                             session_id,
@@ -658,6 +752,17 @@ impl Store {
                         }
                         Effect::Completed(_) => {}
                     }
+                }
+                if checkpoint.started
+                    && checkpoint.mode == focus_core::Mode::Focus
+                    && let Some(tid) = checkpoint.bound_task
+                {
+                    let day = local_date_from_ms(checkpoint.saved_utc_ms);
+                    tx.execute(
+                        "UPDATE tasks SET start_date=COALESCE(start_date,?2) WHERE id=?1 AND (end_date IS NULL OR end_date>=?2)",
+                        params![tid, day],
+                    )
+                    .map_err(sql)?;
                 }
                 let json = serde_json::to_string(&checkpoint).map_err(|e| e.to_string())?;
                 tx.execute("INSERT INTO meta(key,value) VALUES('timer',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [json]).map_err(sql)?;
@@ -673,15 +778,21 @@ impl Store {
                 title,
                 estimate,
                 today,
+                start_date,
+                end_date,
             } => {
                 let title = valid_task(&title, estimate)?;
+                let (start_date, end_date) =
+                    valid_task_dates(start_date.as_deref(), end_date.as_deref())?;
                 let planned_for = today.then(local_date);
-                self.db.execute("INSERT INTO tasks(title,estimate,planned_for,today_order) VALUES(?1,?2,?3,(SELECT COALESCE(MAX(today_order),0)+1 FROM tasks))",params![title,estimate,planned_for]).map_err(sql)?;
+                self.db.execute("INSERT INTO tasks(title,estimate,planned_for,today_order,start_date,end_date) VALUES(?1,?2,?3,(SELECT COALESCE(MAX(today_order),0)+1 FROM tasks),?4,?5)",params![title,estimate,planned_for,start_date,end_date]).map_err(sql)?;
                 Ok(Response::TaskCreated(Task {
                     id: self.db.last_insert_rowid(),
                     title: title.into(),
                     estimate,
                     planned_for,
+                    start_date,
+                    end_date,
                     ..Default::default()
                 }))
             }
@@ -700,22 +811,33 @@ impl Store {
                 id,
                 title,
                 estimate,
+                start_date,
+                end_date,
             } => {
                 let title = valid_task(&title, estimate)?;
+                let (start_date, end_date) =
+                    valid_task_dates(start_date.as_deref(), end_date.as_deref())?;
                 let tx = self.db.transaction().map_err(sql)?;
                 tx.execute(
-                    "UPDATE tasks SET title=?2,estimate=?3 WHERE id=?1 AND deleted=0",
-                    params![id, title, estimate],
+                    "UPDATE tasks SET title=?2,estimate=?3,start_date=?4,end_date=?5 WHERE id=?1 AND deleted=0",
+                    params![id, title, estimate, start_date, end_date],
                 )
                 .map_err(sql)?;
                 tx.commit().map_err(sql)?;
                 Ok(Response::TasksChanged)
             }
             Operation::ToggleTaskDone(id) => {
+                let today = local_date();
                 self.db
                     .execute(
-                        "UPDATE tasks SET done=NOT done WHERE id=?1 AND deleted=0",
-                        [id],
+                        "UPDATE tasks SET
+                            done = NOT done,
+                            end_date = CASE
+                                WHEN done = 0 THEN COALESCE(end_date, CASE WHEN start_date IS NOT NULL AND start_date > ?2 THEN start_date ELSE ?2 END)
+                                ELSE end_date
+                            END
+                         WHERE id = ?1 AND deleted = 0",
+                        params![id, today],
                     )
                     .map_err(sql)?;
                 Ok(Response::TasksChanged)
@@ -752,14 +874,14 @@ impl Store {
             }
             Operation::PlanTask { id, today } => {
                 let date = today.then(local_date);
-                self.db.execute("UPDATE tasks SET planned_for=?2,today_order=(SELECT COALESCE(MAX(today_order),0)+1 FROM tasks) WHERE id=?1 AND deleted=0 AND done=0", params![id,date]).map_err(sql)?;
+                self.db.execute("UPDATE tasks SET planned_for=?2,today_order=(SELECT COALESCE(MAX(today_order),0)+1 FROM tasks) WHERE id=?1 AND deleted=0", params![id,date]).map_err(sql)?;
                 Ok(Response::TasksChanged)
             }
             Operation::MoveTask { id, direction } => {
                 let date = local_date();
                 let tasks: Vec<Task> = Self::all_tasks_in(&self.db)?
                     .into_iter()
-                    .filter(|t| !t.deleted && !t.done && t.planned_for.as_deref() == Some(&date))
+                    .filter(|t| !t.deleted && t.planned_for.as_deref() == Some(&date))
                     .collect();
                 if let Some(index) = tasks.iter().position(|t| t.id == id) {
                     let target = (index as i64 + i64::from(direction.signum()))
@@ -1006,21 +1128,97 @@ impl Store {
                 })
                 .completed = completed;
         }
+        let start_str = start.format("%Y-%m-%d").to_string();
+        let end_inclusive_str = end
+            .pred_opt()
+            .unwrap_or(start)
+            .format("%Y-%m-%d")
+            .to_string();
+        let mut extra_tasks = self
+            .db
+            .prepare(
+                "SELECT id FROM tasks
+                 WHERE deleted = 0
+                   AND (
+                       ( (start_date IS NOT NULL OR end_date IS NOT NULL)
+                         AND COALESCE(start_date, end_date) <= ?2
+                         AND COALESCE(end_date, start_date) >= ?1 )
+                       OR
+                       ( done = 1
+                         AND (
+                             (start_date IS NULL AND end_date IS NULL AND planned_for IS NULL)
+                             OR (COALESCE(start_date, planned_for, end_date) <= ?2
+                                 AND COALESCE(end_date, planned_for, start_date) >= ?1)
+                         )
+                       )
+                   )",
+            )
+            .map_err(|e| e.to_string())?;
+        let extra_ids = extra_tasks
+            .query_map(params![start_str, end_inclusive_str], |r| {
+                r.get::<_, i64>(0)
+            })
+            .map_err(|e| e.to_string())?;
+        for id in extra_ids {
+            let id = id.map_err(|e| e.to_string())?;
+            tasks.entry(Some(id)).or_insert_with(|| TaskReport {
+                task_id: Some(id),
+                ..TaskReport::default()
+            });
+        }
         // Resolve titles once per distinct task instead of allocating one per interval.
         let mut titles = self
             .db
-            .prepare("SELECT title,deleted FROM tasks WHERE id=?1")
+            .prepare(
+                "SELECT title,deleted,done,start_date,end_date,
+                        (SELECT MIN(i.start_ms) FROM intervals i WHERE i.task_id=tasks.id),
+                        (SELECT MAX(i.end_ms) FROM intervals i WHERE i.task_id=tasks.id)
+                 FROM tasks WHERE id=?1",
+            )
             .map_err(|e| e.to_string())?;
         for task in tasks.values_mut() {
-            let saved: Option<(String, bool)> = titles
-                .query_row([task.task_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            let saved: Option<(
+                String,
+                bool,
+                bool,
+                Option<String>,
+                Option<String>,
+                Option<i64>,
+                Option<i64>,
+            )> = titles
+                .query_row([task.task_id], |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                    ))
+                })
                 .optional()
                 .map_err(|e| e.to_string())?;
-            let (title, deleted) =
-                saved.map_or((None, true), |(title, deleted)| (Some(title), deleted));
+            let (title, deleted, done, start_date, end_date) = saved.map_or(
+                (None, true, false, None, None),
+                |(title, deleted, done, start_date, end_date, min_start_ms, max_end_ms)| {
+                    let start_date = start_date.or_else(|| min_start_ms.map(local_date_from_ms));
+                    let end_date = end_date.or_else(|| {
+                        if done {
+                            max_end_ms.map(local_date_from_ms)
+                        } else {
+                            None
+                        }
+                    });
+                    (Some(title), deleted, done, start_date, end_date)
+                },
+            );
             let metadata = TaskReport::new(task.task_id, title, deleted);
             task.title = metadata.title;
             task.deleted = metadata.deleted;
+            task.done = done;
+            task.start_date = start_date;
+            task.end_date = end_date;
         }
         let mut tasks: Vec<_> = tasks.into_values().collect();
         tasks.sort_by(|a, b| {
@@ -1057,6 +1255,27 @@ fn valid_task(title: &str, estimate: u32) -> Result<&str> {
         return Err("Estimate must be 1–99 pomodoros.".into());
     }
     Ok(title)
+}
+fn valid_task_dates(
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> Result<(Option<String>, Option<String>)> {
+    let parse = |raw: Option<&str>, label: &str| -> Result<Option<(NaiveDate, String)>> {
+        let Some(trimmed) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+            return Ok(None);
+        };
+        let parsed = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
+            .map_err(|_| format!("{label} must be YYYY-MM-DD."))?;
+        Ok(Some((parsed, parsed.format("%Y-%m-%d").to_string())))
+    };
+    let start = parse(start_date, "Start date")?;
+    let end = parse(end_date, "End date")?;
+    if let (Some((s, _)), Some((e, _))) = (&start, &end)
+        && e < s
+    {
+        return Err("End date cannot be earlier than start date.".into());
+    }
+    Ok((start.map(|(_, s)| s), end.map(|(_, s)| s)))
 }
 fn local_midnight(date: NaiveDate) -> Result<i64> {
     // Some time zones skip midnight. Choose the first valid local hour, earliest on folds.
@@ -1508,6 +1727,8 @@ mod tests {
             id: t.id,
             title: "Revised".into(),
             estimate: 3,
+            start_date: None,
+            end_date: None,
         })
         .unwrap();
         s.execute(Operation::ToggleTaskDone(t.id)).unwrap();

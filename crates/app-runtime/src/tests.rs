@@ -75,6 +75,8 @@ fn create(r: &mut Runtime, title: &str, start: bool) -> String {
             estimate: 2,
             today: true,
             start,
+            start_date: None,
+            end_date: None,
         })
         .unwrap()
     {
@@ -171,6 +173,8 @@ fn accepted_storage_failure_pauses_and_retry_does_not_duplicate_creation() {
             estimate: 1,
             today: true,
             start: false,
+            start_date: None,
+            end_date: None,
         })
         .unwrap_err();
     assert!(e.accepted);
@@ -227,6 +231,8 @@ fn concurrent_callers_share_one_serial_runtime() {
                     estimate: 1,
                     today: true,
                     start: false,
+                    start_date: None,
+                    end_date: None,
                 })
                 .unwrap()
             })
@@ -317,7 +323,9 @@ fn blocked_resume_clears_suspension_before_a_later_start() {
             title: "Recovery".into(),
             estimate: 1,
             today: true,
-            start: false
+            start: false,
+            start_date: None,
+            end_date: None,
         })
         .is_err()
     );
@@ -358,4 +366,24 @@ fn a_read_error_is_not_reported_as_a_retained_mutation() {
         .unwrap_err();
     assert!(!error.accepted);
     assert!(!r.storage.is_blocked());
+}
+
+#[test]
+fn starting_focus_captures_start_date_and_manual_dates_update_snapshot() {
+    let (mut r, _, _) = fixture();
+    let id = create(&mut r, "Track dates", false);
+    assert!(r.snapshot().unwrap().tasks[0].start_date.is_none());
+    r.execute(AppCommand::StartTask { id: id.clone() }).unwrap();
+    assert!(r.snapshot().unwrap().tasks[0].start_date.is_some());
+    r.execute(AppCommand::EditTask {
+        id: id.clone(),
+        title: "Track dates".into(),
+        estimate: 2,
+        start_date: Some("2026-11-01".into()),
+        end_date: Some("2026-11-05".into()),
+    })
+    .unwrap();
+    let task = &r.snapshot().unwrap().tasks[0];
+    assert_eq!(task.start_date.as_deref(), Some("2026-11-01"));
+    assert_eq!(task.end_date.as_deref(), Some("2026-11-05"));
 }

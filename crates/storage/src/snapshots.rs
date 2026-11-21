@@ -5,10 +5,12 @@ use std::{
 };
 
 pub(super) fn unique_stamp() -> u128 {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos()
+        .saturating_add(NEXT.fetch_add(1, Ordering::Relaxed) as u128)
 }
 
 pub(super) fn backup_path(active: &Path, kind: &str) -> Result<PathBuf> {
