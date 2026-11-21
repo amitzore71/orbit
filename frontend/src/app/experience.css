@@ -204,6 +204,22 @@ input, select, textarea { font-size: var(--text-control); min-height: var(--cont
 .mini-widget-content>div:first-child>span { font-size: 11px; }
 .widget-app .toast { max-width: calc(100% - 20px); font-size: 12px; }
 .widget-app .today-panel .task-check { width: 22px; height: 22px; }
+.tasks-page .quick-add { flex-wrap: wrap; }
+.quick-add-dates { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.date-input { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.date-input input[type=date] { width: 132px; min-height: 32px; padding: 4px 8px; font-size: 11px; background: var(--canvas); }
+.add-dates-action { display: inline-flex; align-items: center; gap: 5px; background: transparent; color: var(--muted); font-size: 11px; padding: 5px 8px; min-height: 32px; border: 1px dashed var(--line); border-radius: var(--radius-control); white-space: nowrap; flex-shrink: 0; }
+.add-dates-action:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+.detail-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0 6px; }
+.detail-dates label { margin: 0; }
+.detail-dates input[type=date] { width: 100%; }
+.date-untracked { color: var(--accent); font-size: 11px; font-weight: 450; }
+.fill-today-dates { margin: 4px 0 8px; padding: 4px 0; font-size: 12px; }
+.task-dates-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media(max-width:700px) {
+  .add-dates-action>span { display: none; }
+  .detail-dates { grid-template-columns: 1fr; }
+}
 @media(forced-colors:active) { .accent-choice>i { border: 1px solid CanvasText; } }
 
 @media(max-height:650px) and (min-width:700px) {

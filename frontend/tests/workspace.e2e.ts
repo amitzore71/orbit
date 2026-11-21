@@ -22,6 +22,24 @@ test('Trash and Undo retain task identity', async ({page}) => {
   await page.getByRole('button', {name: 'All active', exact: true}).click();
   await expect(page.getByRole('button', {name: 'Edit Shape the next chapter of Orbit'})).toBeVisible();
 });
+test('completed tasks stay visible in Today and All active, and start/end dates can be added manually if not captured', async ({page}) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', {name: 'Tasks 3', exact: true}).click();
+  // Manually add start and end dates when not captured
+  await page.getByRole('button', {name: 'Add dates for Read a few pages, take a few notes'}).click();
+  await expect(page.getByLabel('Start date', {exact: true})).toHaveValue('');
+  await expect(page.getByLabel('End date', {exact: true})).toHaveValue('');
+  await page.getByLabel('Start date', {exact: true}).fill('2026-10-18');
+  await page.getByLabel('End date', {exact: true}).fill('2026-10-20');
+  await page.getByRole('button', {name: 'Save changes', exact: true}).click();
+  await expect(page.getByRole('status')).toContainText('Task updated.');
+  await page.getByRole('button', {name: 'Close details'}).click();
+  // Complete the task and verify it stays visible in Today and All active
+  await page.getByRole('button', {name: 'Complete Read a few pages, take a few notes'}).click();
+  await expect(page.getByRole('button', {name: 'Reopen Read a few pages, take a few notes'})).toBeVisible();
+  await page.getByRole('button', {name: 'All active', exact: true}).click();
+  await expect(page.getByRole('button', {name: 'Reopen Read a few pages, take a few notes'})).toBeVisible();
+});
 test('settings drafts survive navigation and a late save acknowledgement', async ({page}) => {
   await mockDesktop(page); await page.goto('/');
   await page.getByRole('button', {name: 'Settings', exact: true}).click();

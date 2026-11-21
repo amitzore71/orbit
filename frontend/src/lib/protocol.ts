@@ -18,6 +18,7 @@ export interface TimerSnapshot {
 export interface Task {
   id: string; title: string; estimate: number; completed: number; done: boolean; deleted: boolean;
   planned_for: string | null; today_order: number;
+  start_date?: string | null; end_date?: string | null;
 }
 export interface AppSnapshot {
   revision: number; timer: TimerSnapshot; tasks: Task[]; settings: Settings; widgets: WidgetPreferences[];
@@ -28,15 +29,15 @@ export interface ReportQuery {period: 'day' | 'week' | 'month'; offset: number; 
 export interface Report {
   title: string; active_ms: number; completed: number; partial_ms: number;
   days: {label: string; active_ms: number; completed: number}[];
-  tasks: {id: string | null; title: string; deleted: boolean; active_ms: number; completed: number}[];
+  tasks: {id: string | null; title: string; deleted: boolean; active_ms: number; completed: number; done?: boolean; start_date?: string | null; end_date?: string | null}[];
 }
 export type TimerAction = 'start' | 'pause' | 'toggle' | 'skip' | 'reset' | 'checkpoint';
 export type TaskAction = 'toggle_done' | 'delete' | 'restore' | 'plan' | 'unplan' | 'up' | 'down';
 export type AppCommand =
   | {type: 'snapshot'} | {type: 'timer'; action: TimerAction} | {type: 'select_mode'; mode: Mode}
   | {type: 'select_task'; id: string | null} | {type: 'start_task'; id: string}
-  | {type: 'create_task'; title: string; estimate: number; today: boolean; start: boolean}
-  | {type: 'edit_task'; id: string; title: string; estimate: number}
+  | {type: 'create_task'; title: string; estimate: number; today: boolean; start: boolean; start_date?: string | null; end_date?: string | null}
+  | {type: 'edit_task'; id: string; title: string; estimate: number; start_date?: string | null; end_date?: string | null}
   | {type: 'task'; id: string; action: TaskAction} | {type: 'save_settings'; settings: Settings}
   | {type: 'widget'; index: number; preferences: WidgetPreferences}
   | {type: 'report'; query: ReportQuery} | {type: 'session_details'; id: string | null; query: ReportQuery}
@@ -66,6 +67,6 @@ export function duration(ms: number) {
 export function timeLabel(ms: number) {const seconds = Math.ceil(ms / 1000); return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;}
 export function filterTasks(tasks: Task[], view: string, today: string, search = '') {
   const query = search.toLocaleLowerCase();
-  return tasks.filter(t => (view === 'trash' ? t.deleted : view === 'completed' ? t.done && !t.deleted : !t.done && !t.deleted && (view === 'today' ? t.planned_for === today : view === 'carry' ? t.planned_for !== null && t.planned_for < today : true)) && t.title.toLocaleLowerCase().includes(query))
+  return tasks.filter(t => (view === 'trash' ? t.deleted : view === 'completed' ? t.done && !t.deleted : view === 'carry' ? !t.done && !t.deleted && t.planned_for !== null && t.planned_for < today : !t.deleted && (view === 'today' ? t.planned_for === today : true)) && t.title.toLocaleLowerCase().includes(query))
     .sort((a, b) => a.today_order - b.today_order || a.id.localeCompare(b.id, undefined, {numeric: true}));
 }

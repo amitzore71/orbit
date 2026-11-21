@@ -6,10 +6,10 @@ export async function mockDesktop(page: Page, options: {light?: boolean; reduced
     const data = {
       revision: 1, timer: {revision: 1, mode: 'Focus', running: false, started: false, remaining_ms: 1500000, total_ms: 1500000, cycle: 1, bound_task: null as string | null, selected_task: '1' as string | null},
       tasks: [
-        {id: '1', title: 'Shape the next chapter of Orbit', estimate: 3, completed: 1, done: false, deleted: false, planned_for: '2026-10-20' as string | null, today_order: 1},
-        {id: '2', title: 'Read a few pages, take a few notes', estimate: 2, completed: 0, done: false, deleted: false, planned_for: '2026-10-20', today_order: 2},
-        {id: '3', title: 'Make space for a new idea', estimate: 1, completed: 0, done: false, deleted: false, planned_for: '2026-10-20', today_order: 3},
-        {id: '4', title: 'Revisit the research notes', estimate: 2, completed: 0, done: false, deleted: false, planned_for: '2026-10-19', today_order: 4},
+        {id: '1', title: 'Shape the next chapter of Orbit', estimate: 3, completed: 1, done: false, deleted: false, planned_for: '2026-10-20' as string | null, today_order: 1, start_date: '2026-10-20' as string | null, end_date: null as string | null},
+        {id: '2', title: 'Read a few pages, take a few notes', estimate: 2, completed: 0, done: false, deleted: false, planned_for: '2026-10-20', today_order: 2, start_date: null as string | null, end_date: null as string | null},
+        {id: '3', title: 'Make space for a new idea', estimate: 1, completed: 0, done: false, deleted: false, planned_for: '2026-10-20', today_order: 3, start_date: null as string | null, end_date: null as string | null},
+        {id: '4', title: 'Revisit the research notes', estimate: 2, completed: 0, done: false, deleted: false, planned_for: '2026-10-19', today_order: 4, start_date: null as string | null, end_date: null as string | null},
       ],
       settings: {focus_minutes: 25, short_minutes: 5, long_minutes: 15, long_interval: 4, auto_breaks: false, auto_focus: false, volume: 65, sound: 0, notifications: true, reduced_motion: false, mica: false, autostart: false, appearance: 0, hotkey_toggle: 'Ctrl+Alt+P', hotkey_show: 'Ctrl+Alt+O', hotkey_skip: ''},
       widgets: Array.from({length: 3}, () => ({enabled: false, x: null, y: null, layer: 1, click_through: false})),
@@ -32,13 +32,13 @@ export async function mockDesktop(page: Page, options: {light?: boolean; reduced
         if (c.type === 'snapshot') return {type: 'snapshot', value: structuredClone(data)};
         if (c.type === 'report') {if (c.query.start && c.query.end < c.query.start) throw {message: 'Choose a valid date range.', accepted: false}; return {type: 'report', value: report};}
         if (c.type === 'session_details') return {type: 'details', value: ['20 Oct · 09:30 · 25m · Complete', '20 Oct · 10:15 · 18m · Partial']};
-        if (c.type === 'create_task') {const id = String(data.tasks.length + 1); data.tasks.push({id, title: c.title, estimate: c.estimate, completed: 0, done: false, deleted: false, planned_for: c.today ? data.today : null, today_order: data.tasks.length + 1}); changed(['tasks']); return {type: 'created', value: id};}
+        if (c.type === 'create_task') {const id = String(data.tasks.length + 1); data.tasks.push({id, title: c.title, estimate: c.estimate, completed: 0, done: false, deleted: false, planned_for: c.today ? data.today : null, today_order: data.tasks.length + 1, start_date: c.start_date || (c.start ? data.today : null), end_date: c.end_date || null}); changed(['tasks']); return {type: 'created', value: id};}
         if (c.type === 'timer') {if (c.action === 'toggle') {data.timer.running = !data.timer.running; data.timer.started = true; data.timer.bound_task ||= data.timer.selected_task;} if (c.action === 'reset') {data.timer.running = false; data.timer.started = false; data.timer.remaining_ms = data.timer.total_ms;} changed(['timer']);}
-        if (c.type === 'start_task') {data.timer.selected_task = c.id; if (!data.timer.started) {data.timer.bound_task = c.id; data.timer.running = true; data.timer.started = true;} changed(['timer']);}
+        if (c.type === 'start_task') {data.timer.selected_task = c.id; const t = data.tasks.find(x => x.id === c.id); if (t && !t.start_date) t.start_date = data.today; if (!data.timer.started) {data.timer.bound_task = c.id; data.timer.running = true; data.timer.started = true;} changed(['timer', 'tasks']);}
         if (c.type === 'select_task') {data.timer.selected_task = c.id; changed(['timer']);}
         if (c.type === 'select_mode') {data.timer.mode = c.mode; data.timer.running = false; data.timer.started = false; data.timer.total_ms = data.timer.remaining_ms = c.mode === 'Focus' ? 1500000 : c.mode === 'ShortBreak' ? 300000 : 900000; changed(['timer']);}
-        if (c.type === 'task') {const task = data.tasks.find(t => t.id === c.id)!; if (c.action === 'delete') task.deleted = true; if (c.action === 'restore') {task.deleted = false; task.planned_for = null;} if (c.action === 'toggle_done') task.done = !task.done; if (c.action === 'plan') task.planned_for = data.today; if (c.action === 'unplan') task.planned_for = null; changed(['tasks']);}
-        if (c.type === 'edit_task') {Object.assign(data.tasks.find(t => t.id === c.id)!, {title: c.title, estimate: c.estimate}); changed(['tasks']);}
+        if (c.type === 'task') {const task = data.tasks.find(t => t.id === c.id)!; if (c.action === 'delete') task.deleted = true; if (c.action === 'restore') {task.deleted = false; task.planned_for = null;} if (c.action === 'toggle_done') {task.done = !task.done; if (task.done && !task.end_date) task.end_date = data.today;} if (c.action === 'plan') task.planned_for = data.today; if (c.action === 'unplan') task.planned_for = null; changed(['tasks']);}
+        if (c.type === 'edit_task') {Object.assign(data.tasks.find(t => t.id === c.id)!, {title: c.title, estimate: c.estimate, start_date: c.start_date ?? null, end_date: c.end_date ?? null}); changed(['tasks']);}
         if (c.type === 'save_settings') {
           const submitted = structuredClone(c.settings);
           await new Promise(r => setTimeout(r, testWindow.__ORBIT_LATENCY__));
