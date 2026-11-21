@@ -16,6 +16,8 @@ use std::{
 };
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
+const WEBVIEW_ARGS: &str = "--renderer-process-limit=1 --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --disable-translate --disable-extensions --disable-features=msSmartScreenProtection,msWebOOUI,msPdfOOUI,Translate,OptimizationHints,MediaRouter,InterestFeedContentSuggestions,msEdgeCollections";
+
 struct Desktop {
     runtime: RuntimeHandle,
     platform: Platform,
@@ -115,17 +117,45 @@ fn observers(app: &tauri::AppHandle) {
         s.runtime.set_timer_observers(count);
     }
 }
-fn show(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-        if let Some(h) = hwnd(&w) {
-            platform_win::foreground(h);
-        }
+fn create_main_window(app: &tauri::AppHandle, visible: bool) -> Result<WebviewWindow, String> {
+    let webview_dir = app.state::<Desktop>().webview_dir.clone();
+    let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .data_directory(webview_dir)
+        .additional_browser_args(WEBVIEW_ARGS)
+        .transparent(true)
+        .background_color(tauri::window::Color(0, 0, 0, 0))
+        .title("Orbit · Local focus workspace")
+        .inner_size(1160., 790.)
+        .min_inner_size(760., 540.)
+        .decorations(false)
+        .visible(visible)
+        .build()
+        .map_err(|e| e.to_string())?;
+    if let Some(h) = hwnd(&main) {
+        platform_win::attach_window(h, None, native_handler(app.clone()));
     }
-    observers(app);
-    let _ = app.emit("orbit://resync", ());
+    Ok(main)
+}
+fn show(app: &tauri::AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let window = handle.get_webview_window("main").or_else(|| {
+            create_main_window(&handle, true)
+                .map_err(|e| handle.emit("orbit://error", error(e)))
+                .ok()
+        });
+        if let Some(w) = window {
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+            if let Some(h) = hwnd(&w) {
+                platform_win::foreground(h);
+            }
+        }
+        appearance(&handle);
+        observers(&handle);
+        let _ = handle.emit("orbit://resync", ());
+    });
 }
 fn sync_widgets(app: &tauri::AppHandle, snapshot: AppSnapshot) {
     let webview_dir = app.state::<Desktop>().webview_dir.clone();
@@ -165,8 +195,8 @@ fn sync_widgets(app: &tauri::AppHandle, snapshot: AppSnapshot) {
                     WebviewUrl::App(format!("widget/index.html?kind={i}").into()),
                 )
                 .data_directory(webview_dir.clone())
-                .additional_browser_args("--renderer-process-limit=2")
-                .background_color(tauri::window::Color(27, 30, 28, 255))
+                .additional_browser_args(WEBVIEW_ARGS)
+                .background_color(tauri::window::Color(18, 20, 23, 255))
                 .title(format!(
                     "Orbit · {}",
                     ["Timer ring", "Today's tasks", "Mini timer"][i]
@@ -834,22 +864,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     action: TimerAction::Start,
                 });
             }
-            let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .data_directory(data_dir.join("webview"))
-                .additional_browser_args("--renderer-process-limit=2")
-                .transparent(true)
-                .background_color(tauri::window::Color(0, 0, 0, 0))
-                .title("Orbit · Your focus workspace")
-                .inner_size(1160., 790.)
-                .min_inner_size(760., 540.)
-                .decorations(false)
-                .visible(!tray)
-                .build()?;
-            if let Some(h) = hwnd(&main) {
-                platform_win::attach_window(h, None, native_handler(handle.clone()));
-            }
-            if args_for_setup.iter().any(|a| a == "--minimized") {
-                let _ = main.minimize();
+            // Lazy-create the main WebView only when visible so --tray runs pure Rust with ~0 WebView RAM.
+            if !tray {
+                let main = create_main_window(&handle, true)?;
+                if args_for_setup.iter().any(|a| a == "--minimized") {
+                    let _ = main.minimize();
+                }
             }
             sync_widgets(&handle, initial);
             if args_for_setup.iter().any(|a| a == "--all-widgets") {
