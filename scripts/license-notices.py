@@ -10,7 +10,7 @@ destination = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else root / "artifa
 metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", "x86_64-pc-windows-msvc"], cwd=root))
 selected = subprocess.check_output(["cargo", "tree", "--locked", "--target", "x86_64-pc-windows-msvc", "-e", "normal,build", "--prefix", "none", "--format", "{p}"], cwd=root, text=True)
 selected = {line.split(" (", 1)[0].removesuffix(" (*)").strip() for line in selected.splitlines()}
-sections = ["Orbit — third-party notices\n\nOrbit uses Rust, Tauri 2, Next.js, React, Motion, Phosphor icons, and Geist fonts. Each dependency retains its license below. Build and test dependency notices are also included. Microsoft Edge WebView2 is a separately installed Microsoft runtime.\n"]
+sections = ["Orbit — third-party notices\n\nOrbit uses Rust, Tauri 2, Next.js, React, and Geist fonts. Each dependency retains its license below. Build and test dependency notices are also included. Microsoft Edge WebView2 is a separately installed Microsoft runtime.\n"]
 missing = []
 cache = root / "packaging" / "licenses"
 fetch_missing = "--fetch-missing" in sys.argv
