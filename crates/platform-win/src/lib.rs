@@ -942,7 +942,9 @@ pub fn configure_main(hwnd: isize, mica: bool) -> bool {
             &backdrop as *const _ as *const c_void,
             size_of::<DWM_SYSTEMBACKDROP_TYPE>() as u32,
         );
-        let margin = if mica { -1 } else { 0 };
+        // Windows 10 does not support DWMWA_SYSTEMBACKDROP_TYPE; only extend the frame when Mica succeeded.
+        let active = mica && result.is_ok();
+        let margin = if active { -1 } else { 0 };
         let margins = windows::Win32::UI::Controls::MARGINS {
             cxLeftWidth: margin,
             cxRightWidth: margin,
@@ -950,7 +952,7 @@ pub fn configure_main(hwnd: isize, mica: bool) -> bool {
             cyBottomHeight: margin,
         };
         let extended = DwmExtendFrameIntoClientArea(hwnd, &margins);
-        mica && result.is_ok() && extended.is_ok()
+        active && extended.is_ok()
     }
 }
 unsafe fn rounded(hwnd: HWND) {

@@ -6,7 +6,7 @@ Version 0.3 introduces an orbital timer, a shared Focus / Today workspace, a com
 
 ## Run
 
-Requires Windows 11 22H2 or newer, x64, and Microsoft Edge WebView2. Use the portable ZIP or the per-user installer. Closing the main window hides Orbit to the tray; use the tray menu to open, control, or quit it.
+Requires Windows 10 (64-bit) or Windows 11, x64, and Microsoft Edge WebView2. Use the portable ZIP or the per-user installer. Closing the main window hides Orbit to the tray; use the tray menu to open, control, or quit it.
 
 The installer checks WebView2 and downloads Microsoft's Evergreen bootstrapper only if needed. For offline setup, download the official [Evergreen standalone x64 installer](https://developer.microsoft.com/microsoft-edge/webview2/), rename it `MicrosoftEdgeWebView2RuntimeInstallerX64.exe`, and place it beside Orbit's installer. Portable users should install WebView2 first. Orbit itself needs no internet connection, account, telemetry, or background service.
 
