@@ -145,6 +145,7 @@ impl Store {
                     done: task.done,
                     start_date: task.start_date,
                     end_date: task.end_date,
+                    tag: task.tag,
                 });
             }
         }
@@ -158,19 +159,19 @@ impl Store {
             file.write_all(b"\xef\xbb\xbf")?;
             writeln!(
                 file,
-                "record,period,current_utc_offset,task_id,title,active_ms,completed,deleted,done,start_date,end_date"
+                "record,period,current_utc_offset,task_id,title,active_ms,completed,deleted,done,start_date,end_date,tag"
             )?;
             let zone = csv_cell(&Local::now().offset().to_string());
             let title = csv_cell(&report.title);
             writeln!(
                 file,
-                "summary,{title},{zone},,,{},{},,,,",
+                "summary,{title},{zone},,,{},{},,,,,",
                 report.active_ms, report.completed
             )?;
             for task in report.tasks {
                 writeln!(
                     file,
-                    "task,{title},{zone},{},{},{},{},{},{},{},{}",
+                    "task,{title},{zone},{},{},{},{},{},{},{},{},{}",
                     task.task_id.map(|id| id.to_string()).unwrap_or_default(),
                     csv_cell(&task.title),
                     task.active_ms,
@@ -178,13 +179,14 @@ impl Store {
                     task.deleted,
                     task.done,
                     task.start_date.as_deref().map(csv_cell).unwrap_or_default(),
-                    task.end_date.as_deref().map(csv_cell).unwrap_or_default()
+                    task.end_date.as_deref().map(csv_cell).unwrap_or_default(),
+                    csv_cell(&task.tag)
                 )?;
             }
             for day in report.days {
                 writeln!(
                     file,
-                    "day,{title},{zone},,{},{},{},,,,",
+                    "day,{title},{zone},,{},{},{},,,,,",
                     csv_cell(&day.label),
                     day.active_ms,
                     day.completed

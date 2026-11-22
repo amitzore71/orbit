@@ -1,5 +1,5 @@
 //! SQLite lives on a single blocking worker; callers receive bounded, asynchronous responses.
-use chrono::{Datelike, Days, Local, Months, NaiveDate, TimeZone};
+use chrono::{Datelike, Days, Local, Months, NaiveDate, TimeZone, Timelike};
 use focus_core::{Checkpoint, Effect, Settings, WidgetPreferences};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::{
@@ -56,6 +56,7 @@ pub struct Task {
     pub today_order: i64,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    pub tag: String,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Period {
@@ -79,6 +80,18 @@ pub struct TaskReport {
     pub done: bool,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    pub tag: String,
+}
+#[derive(Clone, Debug, Default)]
+pub struct HourBucket {
+    pub label: String,
+    pub active_ms: u64,
+}
+#[derive(Clone, Debug, Default)]
+pub struct TagReport {
+    pub tag: String,
+    pub active_ms: u64,
+    pub completed: u32,
 }
 impl TaskReport {
     fn new(task_id: Option<i64>, title: Option<String>, deleted: bool) -> Self {
@@ -98,6 +111,8 @@ pub struct Report {
     pub title: String,
     pub days: Vec<DayReport>,
     pub tasks: Vec<TaskReport>,
+    pub hours: Vec<HourBucket>,
+    pub tags: Vec<TagReport>,
     pub active_ms: u64,
     pub completed: u32,
     pub partial_ms: u64,
@@ -106,6 +121,19 @@ pub struct Report {
 pub struct FocusSummary {
     pub active_ms: u64,
     pub completed: u32,
+}
+#[derive(Clone, Debug, Default)]
+pub struct ActivityDay {
+    pub date: String,
+    pub active_ms: u64,
+    pub completed: u32,
+}
+#[derive(Clone, Debug, Default)]
+pub struct ActivityHistory {
+    pub days: Vec<ActivityDay>,
+    pub current_streak: u32,
+    pub best_streak: u32,
+    pub goal_days: u32,
 }
 pub struct Loaded {
     pub settings: Settings,
@@ -132,6 +160,7 @@ pub enum Operation {
         today: bool,
         start_date: Option<String>,
         end_date: Option<String>,
+        tag: String,
     },
     EditTask {
         id: i64,
@@ -139,6 +168,7 @@ pub enum Operation {
         estimate: u32,
         start_date: Option<String>,
         end_date: Option<String>,
+        tag: String,
     },
     ToggleTaskDone(i64),
     DeleteTask(i64),
@@ -181,6 +211,10 @@ pub enum Operation {
         period: Period,
         offset: i32,
     },
+    ActivityHistory {
+        days: u32,
+        goal_sessions: u32,
+    },
     Today,
     Flush,
 }
@@ -193,6 +227,7 @@ pub enum Response {
     Flushed(Settings),
     Tasks(Vec<Task>),
     Report(Report),
+    ActivityHistory(ActivityHistory),
     Today(FocusSummary),
     BackedUp(PathBuf),
     Restored(Box<Loaded>),
@@ -433,6 +468,7 @@ fn validate_operation(operation: &Operation) -> Result<()> {
             estimate,
             start_date,
             end_date,
+            tag,
             ..
         }
         | Operation::EditTask {
@@ -440,10 +476,12 @@ fn validate_operation(operation: &Operation) -> Result<()> {
             estimate,
             start_date,
             end_date,
+            tag,
             ..
         } => {
             valid_task(title, *estimate)?;
             valid_task_dates(start_date.as_deref(), end_date.as_deref())?;
+            valid_tag(tag)?;
         }
         Operation::Settings(settings) => settings.validate()?,
         Operation::Widget { index, .. } if *index >= 3 => return Err("Invalid widget.".into()),
@@ -571,6 +609,7 @@ impl Store {
             .map_err(|e| e.to_string())?;
         let has_start = columns.iter().any(|c| c == "start_date");
         let has_end = columns.iter().any(|c| c == "end_date");
+        let has_tag = columns.iter().any(|c| c == "tag");
         if !has_start {
             if let Err(e) = db.execute("ALTER TABLE tasks ADD COLUMN start_date TEXT", [])
                 && !e.to_string().contains("duplicate column name")
@@ -581,6 +620,15 @@ impl Store {
         if !has_end {
             if let Err(e) = db.execute("ALTER TABLE tasks ADD COLUMN end_date TEXT", [])
                 && !e.to_string().contains("duplicate column name")
+            {
+                return Err(e.to_string());
+            }
+        }
+        if !has_tag {
+            if let Err(e) = db.execute(
+                "ALTER TABLE tasks ADD COLUMN tag TEXT NOT NULL DEFAULT ''",
+                [],
+            ) && !e.to_string().contains("duplicate column name")
             {
                 return Err(e.to_string());
             }
@@ -639,7 +687,8 @@ impl Store {
                     (SELECT COUNT(*) FROM sessions s WHERE s.task_id=t.id AND s.completed=1),
                     t.deleted,t.planned_for,t.today_order,t.start_date,t.end_date,
                     (SELECT MIN(i.start_ms) FROM intervals i WHERE i.task_id=t.id),
-                    (SELECT MAX(i.end_ms) FROM intervals i WHERE i.task_id=t.id)
+                    (SELECT MAX(i.end_ms) FROM intervals i WHERE i.task_id=t.id),
+                    t.tag
              FROM tasks t ORDER BY done,today_order,id",
             )
             .map_err(|e| e.to_string())?;
@@ -673,6 +722,7 @@ impl Store {
                     today_order: row.get(7)?,
                     start_date,
                     end_date,
+                    tag: row.get::<_, Option<String>>(12)?.unwrap_or_default(),
                 })
             })
             .map_err(|e| e.to_string())?
@@ -780,12 +830,14 @@ impl Store {
                 today,
                 start_date,
                 end_date,
+                tag,
             } => {
                 let title = valid_task(&title, estimate)?;
                 let (start_date, end_date) =
                     valid_task_dates(start_date.as_deref(), end_date.as_deref())?;
+                let tag = valid_tag(&tag)?;
                 let planned_for = today.then(local_date);
-                self.db.execute("INSERT INTO tasks(title,estimate,planned_for,today_order,start_date,end_date) VALUES(?1,?2,?3,(SELECT COALESCE(MAX(today_order),0)+1 FROM tasks),?4,?5)",params![title,estimate,planned_for,start_date,end_date]).map_err(sql)?;
+                self.db.execute("INSERT INTO tasks(title,estimate,planned_for,today_order,start_date,end_date,tag) VALUES(?1,?2,?3,(SELECT COALESCE(MAX(today_order),0)+1 FROM tasks),?4,?5,?6)",params![title,estimate,planned_for,start_date,end_date,tag]).map_err(sql)?;
                 Ok(Response::TaskCreated(Task {
                     id: self.db.last_insert_rowid(),
                     title: title.into(),
@@ -793,6 +845,7 @@ impl Store {
                     planned_for,
                     start_date,
                     end_date,
+                    tag: tag.into(),
                     ..Default::default()
                 }))
             }
@@ -813,14 +866,16 @@ impl Store {
                 estimate,
                 start_date,
                 end_date,
+                tag,
             } => {
                 let title = valid_task(&title, estimate)?;
                 let (start_date, end_date) =
                     valid_task_dates(start_date.as_deref(), end_date.as_deref())?;
+                let tag = valid_tag(&tag)?;
                 let tx = self.db.transaction().map_err(sql)?;
                 tx.execute(
-                    "UPDATE tasks SET title=?2,estimate=?3,start_date=?4,end_date=?5 WHERE id=?1 AND deleted=0",
-                    params![id, title, estimate, start_date, end_date],
+                    "UPDATE tasks SET title=?2,estimate=?3,start_date=?4,end_date=?5,tag=?6 WHERE id=?1 AND deleted=0",
+                    params![id, title, estimate, start_date, end_date, tag],
                 )
                 .map_err(sql)?;
                 tx.commit().map_err(sql)?;
@@ -967,6 +1022,14 @@ impl Store {
             Operation::Report { period, offset } => {
                 Ok(Response::Report(self.report(period, offset)?))
             }
+            Operation::ActivityHistory {
+                days,
+                goal_sessions,
+            } => Ok(Response::ActivityHistory(self.activity_history(
+                Local::now().date_naive(),
+                days,
+                goal_sessions,
+            )?)),
             Operation::Today => {
                 let today = Local::now().date_naive();
                 Ok(Response::Today(self.summary_between(
@@ -985,6 +1048,156 @@ impl Store {
     fn report(&self, period: Period, offset: i32) -> Result<Report> {
         let (start, end) = date_range(Local::now().date_naive(), period, offset)?;
         self.report_between(start, end)
+    }
+    fn activity_history(
+        &self,
+        today: NaiveDate,
+        num_days: u32,
+        goal_sessions: u32,
+    ) -> Result<ActivityHistory> {
+        let count = num_days.clamp(7, 366);
+        let start = today
+            .checked_sub_days(Days::new(u64::from(count - 1)))
+            .ok_or("Date overflow")?;
+        let end = today.succ_opt().ok_or("Date overflow")?;
+        let mut dates = Vec::with_capacity(count as usize);
+        let mut day = start;
+        while day < end {
+            dates.push(day);
+            day = day.succ_opt().ok_or("Date overflow")?;
+        }
+        let boundaries: Vec<i64> = dates
+            .iter()
+            .copied()
+            .chain(std::iter::once(end))
+            .map(local_midnight)
+            .collect::<Result<_>>()?;
+        let mut days: Vec<ActivityDay> = dates
+            .iter()
+            .map(|d| ActivityDay {
+                date: d.format("%Y-%m-%d").to_string(),
+                active_ms: 0,
+                completed: 0,
+            })
+            .collect();
+        let begin = boundaries[0];
+        let finish = *boundaries.last().ok_or("Empty activity range")?;
+        let query = format!("SELECT start_ms,end_ms,active_ms FROM ({INTERVALS_IN_RANGE})");
+        let mut statement = self.db.prepare(&query).map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map(
+                params![begin, finish, finish.saturating_add(MAX_NORMAL_INTERVAL_MS)],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, i64>(2)? as u64,
+                    ))
+                },
+            )
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (a, b, active) = row.map_err(|e| e.to_string())?;
+            if b <= a {
+                continue;
+            }
+            let first = boundaries
+                .partition_point(|boundary| *boundary <= a)
+                .saturating_sub(1);
+            for (i, bucket) in days.iter_mut().enumerate().skip(first) {
+                if boundaries[i] >= b {
+                    break;
+                }
+                let overlap = b
+                    .min(boundaries[i + 1])
+                    .saturating_sub(a.max(boundaries[i]))
+                    .max(0) as u64;
+                let credited = (u128::from(active) * u128::from(overlap) / (b - a) as u128) as u64;
+                bucket.active_ms += credited;
+            }
+        }
+        let mut sess_stmt = self
+            .db
+            .prepare(
+                "SELECT ended_ms FROM sessions WHERE completed=1 AND ended_ms>=?1 AND ended_ms<?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let sess_rows = sess_stmt
+            .query_map(params![begin, finish], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        for row in sess_rows {
+            let ended = row.map_err(|e| e.to_string())?;
+            let idx = boundaries
+                .partition_point(|boundary| *boundary <= ended)
+                .saturating_sub(1);
+            if let Some(bucket) = days.get_mut(idx) {
+                bucket.completed += 1;
+            }
+        }
+        let goal = goal_sessions.max(1);
+        let goal_days = days.iter().filter(|d| d.completed >= goal).count() as u32;
+
+        // Compute all-time best streak and current streak from completed sessions.
+        let mut all_stmt = self
+            .db
+            .prepare("SELECT ended_ms FROM sessions WHERE completed=1 ORDER BY ended_ms ASC")
+            .map_err(|e| e.to_string())?;
+        let all_rows = all_stmt
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        let mut active_dates: Vec<NaiveDate> = Vec::new();
+        for row in all_rows {
+            let ms = row.map_err(|e| e.to_string())?;
+            if let Some(d) = Local
+                .timestamp_millis_opt(ms)
+                .single()
+                .map(|t| t.date_naive())
+                && active_dates.last() != Some(&d)
+            {
+                active_dates.push(d);
+            }
+        }
+        let mut best_streak = 0u32;
+        let mut run = 0u32;
+        for i in 0..active_dates.len() {
+            if i == 0
+                || active_dates[i]
+                    .signed_duration_since(active_dates[i - 1])
+                    .num_days()
+                    == 1
+            {
+                run += 1;
+            } else {
+                run = 1;
+            }
+            if run > best_streak {
+                best_streak = run;
+            }
+        }
+        let mut current_streak = 0u32;
+        if let Some(&last) = active_dates.last() {
+            let gap = today.signed_duration_since(last).num_days();
+            if gap == 0 || gap == 1 {
+                current_streak = 1;
+                for i in (1..active_dates.len()).rev() {
+                    if active_dates[i]
+                        .signed_duration_since(active_dates[i - 1])
+                        .num_days()
+                        == 1
+                    {
+                        current_streak += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(ActivityHistory {
+            days,
+            current_streak,
+            best_streak,
+            goal_days,
+        })
     }
     fn summary_between(&self, begin: i64, finish: i64) -> Result<FocusSummary> {
         let query = format!("SELECT start_ms,end_ms,active_ms FROM ({INTERVALS_IN_RANGE})");
@@ -1075,6 +1288,8 @@ impl Store {
             )
             .map_err(|e| e.to_string())?;
         let mut partial_ms = 0u64;
+        let hour_labels = ["12a–4a", "4a–8a", "8a–12p", "12p–4p", "4p–8p", "8p–12a"];
+        let mut hour_totals = [0u64; 6];
         for row in rows {
             let (a, b, active, completed, task_id) = row.map_err(|e| e.to_string())?;
             if b <= a {
@@ -1088,13 +1303,19 @@ impl Store {
                 if boundaries[i] >= b {
                     break;
                 }
-                let overlap = b
-                    .min(boundaries[i + 1])
-                    .saturating_sub(a.max(boundaries[i]))
-                    .max(0) as u64;
+                let clip_a = a.max(boundaries[i]);
+                let clip_b = b.min(boundaries[i + 1]);
+                let overlap = clip_b.saturating_sub(clip_a).max(0) as u64;
                 let credited = (u128::from(active) * u128::from(overlap) / (b - a) as u128) as u64;
                 bucket.active_ms += credited;
                 task_ms += credited;
+                if credited > 0 {
+                    let mid = clip_a.saturating_add(clip_b.saturating_sub(clip_a) / 2);
+                    if let Some(local_dt) = Local.timestamp_millis_opt(mid).single() {
+                        let slot = ((local_dt.hour() as usize) / 4).min(5);
+                        hour_totals[slot] = hour_totals[slot].saturating_add(credited);
+                    }
+                }
                 if !completed {
                     partial_ms += credited;
                 }
@@ -1172,7 +1393,8 @@ impl Store {
             .prepare(
                 "SELECT title,deleted,done,start_date,end_date,
                         (SELECT MIN(i.start_ms) FROM intervals i WHERE i.task_id=tasks.id),
-                        (SELECT MAX(i.end_ms) FROM intervals i WHERE i.task_id=tasks.id)
+                        (SELECT MAX(i.end_ms) FROM intervals i WHERE i.task_id=tasks.id),
+                        tag
                  FROM tasks WHERE id=?1",
             )
             .map_err(|e| e.to_string())?;
@@ -1185,6 +1407,7 @@ impl Store {
                 Option<String>,
                 Option<i64>,
                 Option<i64>,
+                Option<String>,
             )> = titles
                 .query_row([task.task_id], |r| {
                     Ok((
@@ -1195,13 +1418,14 @@ impl Store {
                         r.get(4)?,
                         r.get(5)?,
                         r.get(6)?,
+                        r.get(7)?,
                     ))
                 })
                 .optional()
                 .map_err(|e| e.to_string())?;
-            let (title, deleted, done, start_date, end_date) = saved.map_or(
-                (None, true, false, None, None),
-                |(title, deleted, done, start_date, end_date, min_start_ms, max_end_ms)| {
+            let (title, deleted, done, start_date, end_date, tag) = saved.map_or(
+                (None, true, false, None, None, String::new()),
+                |(title, deleted, done, start_date, end_date, min_start_ms, max_end_ms, tag)| {
                     let start_date = start_date.or_else(|| min_start_ms.map(local_date_from_ms));
                     let end_date = end_date.or_else(|| {
                         if done {
@@ -1210,7 +1434,14 @@ impl Store {
                             None
                         }
                     });
-                    (Some(title), deleted, done, start_date, end_date)
+                    (
+                        Some(title),
+                        deleted,
+                        done,
+                        start_date,
+                        end_date,
+                        tag.unwrap_or_default(),
+                    )
                 },
             );
             let metadata = TaskReport::new(task.task_id, title, deleted);
@@ -1219,6 +1450,7 @@ impl Store {
             task.done = done;
             task.start_date = start_date;
             task.end_date = end_date;
+            task.tag = tag;
         }
         let mut tasks: Vec<_> = tasks.into_values().collect();
         tasks.sort_by(|a, b| {
@@ -1227,6 +1459,38 @@ impl Store {
                 .then_with(|| a.title.cmp(&b.title))
                 .then_with(|| a.task_id.cmp(&b.task_id))
         });
+        let mut tag_map: BTreeMap<String, TagReport> = BTreeMap::new();
+        for task in &tasks {
+            if task.active_ms == 0 && task.completed == 0 {
+                continue;
+            }
+            let key = if task.tag.is_empty() {
+                "Untagged".to_string()
+            } else {
+                task.tag.clone()
+            };
+            let entry = tag_map.entry(key.clone()).or_insert_with(|| TagReport {
+                tag: key,
+                active_ms: 0,
+                completed: 0,
+            });
+            entry.active_ms = entry.active_ms.saturating_add(task.active_ms);
+            entry.completed = entry.completed.saturating_add(task.completed);
+        }
+        let mut tags: Vec<TagReport> = tag_map.into_values().collect();
+        tags.sort_by(|a, b| {
+            b.active_ms
+                .cmp(&a.active_ms)
+                .then_with(|| a.tag.cmp(&b.tag))
+        });
+        let hours: Vec<HourBucket> = hour_labels
+            .iter()
+            .zip(hour_totals)
+            .map(|(label, active_ms)| HourBucket {
+                label: (*label).into(),
+                active_ms,
+            })
+            .collect();
         Ok(Report {
             title: if dates.len() == 1 {
                 start.format("%A, %d %B").to_string()
@@ -1241,6 +1505,8 @@ impl Store {
             completed: days.iter().map(|d| d.completed).sum(),
             days,
             tasks,
+            hours,
+            tags,
             partial_ms,
         })
     }
@@ -1255,6 +1521,13 @@ fn valid_task(title: &str, estimate: u32) -> Result<&str> {
         return Err("Estimate must be 1–99 pomodoros.".into());
     }
     Ok(title)
+}
+fn valid_tag(tag: &str) -> Result<&str> {
+    let tag = tag.trim();
+    if tag.chars().count() > 32 {
+        return Err("Tag must be 32 characters or fewer.".into());
+    }
+    Ok(tag)
 }
 fn valid_task_dates(
     start_date: Option<&str>,
@@ -1729,6 +2002,7 @@ mod tests {
             estimate: 3,
             start_date: None,
             end_date: None,
+            tag: String::new(),
         })
         .unwrap();
         s.execute(Operation::ToggleTaskDone(t.id)).unwrap();
@@ -1909,5 +2183,89 @@ mod tests {
                 .unwrap(),
             1
         );
+    }
+    #[test]
+    fn activity_history_tracks_streaks_and_goal_days() {
+        let s = memory();
+        let today = NaiveDate::from_ymd_opt(2026, 10, 20).unwrap();
+        let empty = s.activity_history(today, 84, 2).unwrap();
+        assert_eq!(empty.days.len(), 84);
+        assert_eq!(
+            (empty.current_streak, empty.best_streak, empty.goal_days),
+            (0, 0, 0)
+        );
+
+        // 4-day historical best streak (Oct 10..=13) and 2-day current streak ending yesterday (Oct 18..=19)
+        let mut id = 1i64;
+        for (offset, sessions) in [(10, 1), (9, 2), (8, 1), (7, 1), (2, 2), (1, 2)] {
+            let day = today.checked_sub_days(Days::new(offset)).unwrap();
+            let noon = local_midnight(day).unwrap() + 12 * 3_600_000;
+            for k in 0..sessions {
+                let start = noon + k * 2_000_000;
+                let end = start + 1_500_000;
+                s.db.execute(
+                    "INSERT INTO sessions(id,task_id,completed,ended_ms) VALUES(?1,NULL,1,?2)",
+                    params![id, end],
+                )
+                .unwrap();
+                s.db.execute(
+                    "INSERT INTO intervals(session_id,task_id,start_ms,end_ms,active_ms) VALUES(?1,NULL,?2,?3,?4)",
+                    params![id, start, end, 1_500_000i64],
+                )
+                .unwrap();
+                id += 1;
+            }
+        }
+        let history = s.activity_history(today, 84, 2).unwrap();
+        assert_eq!(history.best_streak, 4);
+        assert_eq!(history.current_streak, 2);
+        assert_eq!(history.goal_days, 3);
+        let yesterday = history
+            .days
+            .iter()
+            .find(|d| d.date == "2026-10-19")
+            .unwrap();
+        assert_eq!(yesterday.completed, 2);
+        assert_eq!(yesterday.active_ms, 3_000_000);
+    }
+    #[test]
+    fn tags_and_peak_hours_aggregate_in_reports() {
+        let mut s = memory();
+        let created = s
+            .process(Operation::CreateTask {
+                title: "Ship tags".into(),
+                estimate: 2,
+                today: true,
+                start_date: None,
+                end_date: None,
+                tag: "  Deep Work  ".into(),
+            })
+            .unwrap();
+        let task = match created {
+            Response::TaskCreated(t) => t,
+            _ => panic!("expected TaskCreated"),
+        };
+        assert_eq!(task.tag, "Deep Work");
+        let day = NaiveDate::from_ymd_opt(2026, 10, 21).unwrap();
+        let morning_start = local_midnight(day).unwrap() + 9 * 3_600_000;
+        let morning_end = morning_start + 1_500_000;
+        s.db.execute(
+            "INSERT INTO sessions(id,task_id,completed,ended_ms) VALUES(1,?1,1,?2)",
+            params![task.id, morning_end],
+        )
+        .unwrap();
+        s.db.execute(
+            "INSERT INTO intervals(session_id,task_id,start_ms,end_ms,active_ms) VALUES(1,?1,?2,?3,1500000)",
+            params![task.id, morning_start, morning_end],
+        )
+        .unwrap();
+        let report = s.report_between(day, day.succ_opt().unwrap()).unwrap();
+        assert_eq!(report.hours.len(), 6);
+        assert_eq!(report.hours[2].label, "8a–12p");
+        assert_eq!(report.hours[2].active_ms, 1_500_000);
+        assert_eq!(report.tags.len(), 1);
+        assert_eq!(report.tags[0].tag, "Deep Work");
+        assert_eq!(report.tags[0].active_ms, 1_500_000);
+        assert_eq!(report.tags[0].completed, 1);
     }
 }

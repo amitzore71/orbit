@@ -119,6 +119,7 @@ fn backup_restore_round_trip_is_paused_and_keeps_this_machines_startup_choice() 
             today: true,
             start_date: None,
             end_date: None,
+            tag: String::new(),
         })
         .unwrap();
     let mut timer = focus_core::Timer::new(Settings::default());
@@ -287,6 +288,7 @@ fn manual_dates_and_completed_tasks_without_sessions_appear_in_reports_and_csv_e
             today: true,
             start_date: None,
             end_date: None,
+            tag: String::new(),
         })
         .unwrap();
     let initial = &store.tasks().unwrap()[0];
@@ -309,6 +311,7 @@ fn manual_dates_and_completed_tasks_without_sessions_appear_in_reports_and_csv_e
             estimate: 2,
             start_date: Some(today.clone()),
             end_date: Some(today.clone()),
+            tag: String::new(),
         })
         .unwrap();
     let after_edit = &store.tasks().unwrap()[0];
@@ -324,6 +327,7 @@ fn manual_dates_and_completed_tasks_without_sessions_appear_in_reports_and_csv_e
                 estimate: 2,
                 start_date: Some("2026-11-22".into()),
                 end_date: Some("2026-11-20".into()),
+                tag: String::new(),
             })
             .is_err()
     );
