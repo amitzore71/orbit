@@ -1,3 +1,13 @@
+# Orbit 0.5.0 — 22 November 2026
+
+- Adds native window Maximize / Restore (titlebar button, double-click titlebar, and tray restore preserving maximized state).
+- Adds Live Session Flow Controls: `+5m` live timer extension (capped at 180 min) and quick Focus Presets (*Sprint*, *Classic*, *Deep Work*, *Ultradian*).
+- Adds Daily Focus Goal, current/best streak tracking, and an interactive 12-week activity heatmap in Insights.
+- Adds Zen Focus Mode (`Ctrl+Shift+F`) and a keyboard-first Command Palette (`Ctrl+K`) with quick search, view switching (`Alt+1..4`), and instant *Create & focus*.
+- Adds Built-in Ambient Focus Soundscapes (*Brown noise*, *Soft rain*, *Warm cafe*, *Deep drone*) powered by an offline procedural Web Audio engine with smooth timer-synced fading.
+- Adds native Windows Taskbar Progress Bar (`ITaskbarList3`) and live tray hover countdown tooltip.
+- Adds Task Tags / Categories with filter pills, color-coded badges, CSV tag export, and **Peak Focus Hours (Time of day)** & **Focus by Tag** analytics in Insights.
+
 # Orbit 0.4.0 — 21 November 2026
 
 - Rebuilds the Obsidian and Alabaster design system with Geist Mono tabular numerals, pure-CSS UI primitives, and a bespoke inline SVG icon set.
