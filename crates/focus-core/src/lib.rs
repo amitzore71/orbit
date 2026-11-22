@@ -56,6 +56,26 @@ pub enum MotionLevel {
     Reduced,
     Off,
 }
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AmbientSound {
+    #[default]
+    Off,
+    BrownNoise,
+    Rain,
+    Cafe,
+    Drone,
+}
+
+fn default_daily_goal() -> u32 {
+    4
+}
+fn default_ambient_volume() -> u32 {
+    35
+}
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -64,11 +84,21 @@ pub struct Settings {
     pub short_minutes: u32,
     pub long_minutes: u32,
     pub long_interval: u32,
+    #[serde(default = "default_daily_goal")]
+    pub daily_goal_sessions: u32,
     pub auto_breaks: bool,
     pub auto_focus: bool,
     pub volume: u32,
     pub sound: u32,
+    #[serde(default)]
+    pub ambient_sound: AmbientSound,
+    #[serde(default = "default_ambient_volume")]
+    pub ambient_volume: u32,
+    #[serde(default)]
+    pub ambient_during_breaks: bool,
     pub notifications: bool,
+    #[serde(default = "default_true")]
+    pub taskbar_progress: bool,
     pub reduced_motion: bool,
     pub mica: bool,
     pub autostart: bool,
@@ -89,11 +119,16 @@ impl Default for Settings {
             short_minutes: 5,
             long_minutes: 15,
             long_interval: 4,
+            daily_goal_sessions: default_daily_goal(),
             auto_breaks: false,
             auto_focus: false,
             volume: 65,
             sound: 0,
+            ambient_sound: AmbientSound::Off,
+            ambient_volume: default_ambient_volume(),
+            ambient_during_breaks: false,
             notifications: true,
+            taskbar_progress: true,
             reduced_motion: false,
             mica: false,
             autostart: false,
@@ -130,7 +165,10 @@ impl Settings {
         if !(1..=12).contains(&self.long_interval) {
             return Err("Long break interval must be 1–12.".into());
         }
-        if self.volume > 100 || self.sound > 2 || self.appearance > 2 {
+        if !(1..=24).contains(&self.daily_goal_sessions) {
+            return Err("Daily focus goal must be 1–24 sessions.".into());
+        }
+        if self.volume > 100 || self.ambient_volume > 100 || self.sound > 2 || self.appearance > 2 {
             return Err("Invalid alarm settings.".into());
         }
         if [&self.hotkey_toggle, &self.hotkey_show, &self.hotkey_skip]
@@ -214,6 +252,7 @@ pub enum Command {
     Toggle,
     Skip,
     Reset,
+    Extend(u64),
     SelectMode(Mode),
     SelectTask(Option<i64>),
     StartTask(i64),
@@ -412,6 +451,19 @@ impl Timer {
             Command::Reset => {
                 self.finish(false, now, &mut effects);
                 self.load_mode(self.state.mode);
+            }
+            Command::Extend(delta_ms) if !expired => {
+                const MAX_MS: u64 = 180 * 60_000;
+                let remaining = self.remaining(now);
+                let max_add = MAX_MS.saturating_sub(self.state.total_ms);
+                let add = delta_ms.min(max_add);
+                if add > 0 {
+                    self.state.total_ms = self.state.total_ms.saturating_add(add);
+                    self.state.remaining_ms = remaining.saturating_add(add);
+                    if let Some(deadline) = self.deadline_ms.as_mut() {
+                        *deadline = deadline.saturating_add(add);
+                    }
+                }
             }
             Command::SelectMode(mode) => {
                 self.finish(false, now, &mut effects);
@@ -720,5 +772,54 @@ mod tests {
         assert!(s.running);
         assert_eq!(s.remaining_ms, 60_000);
         assert_eq!(s.cycle, 1);
+    }
+    #[test]
+    fn extend_adds_time_conserves_active_time_and_caps_at_180_minutes() {
+        let mut x = timer();
+        x.dispatch(Command::Start, t(0, 0));
+        // 30s elapsed, 30s remaining; extend by 5 minutes (300_000 ms)
+        assert!(
+            x.dispatch(Command::Extend(300_000), t(30_000, 30_000))
+                .is_empty()
+        );
+        let s = x.snapshot(t(30_000, 30_000));
+        assert!(s.running);
+        assert_eq!(s.total_ms, 360_000);
+        assert_eq!(s.remaining_ms, 330_000);
+        // Pause after 60s total awake focus; credited active_ms must be 60_000
+        let effects = x.dispatch(Command::Pause, t(60_000, 60_000));
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::FocusInterval {
+                active_ms: 60_000,
+                ..
+            }]
+        ));
+        // Extending while paused also works and clamps at 180 minutes
+        x.dispatch(Command::Extend(200 * 60_000), t(60_000, 60_000));
+        let capped = x.snapshot(t(60_000, 60_000));
+        assert_eq!(capped.total_ms, 180 * 60_000);
+        assert_eq!(capped.remaining_ms, 180 * 60_000 - 60_000);
+    }
+    #[test]
+    fn daily_goal_defaults_and_validates_bounds() {
+        let mut settings = Settings::default();
+        assert_eq!(settings.daily_goal_sessions, 4);
+        assert!(settings.validate().is_ok());
+        settings.daily_goal_sessions = 0;
+        assert!(settings.validate().is_err());
+        settings.daily_goal_sessions = 25;
+        assert!(settings.validate().is_err());
+    }
+    #[test]
+    fn ambient_and_taskbar_settings_default_and_validate() {
+        let mut settings = Settings::default();
+        assert_eq!(settings.ambient_sound, AmbientSound::Off);
+        assert_eq!(settings.ambient_volume, 35);
+        assert!(!settings.ambient_during_breaks);
+        assert!(settings.taskbar_progress);
+        assert!(settings.validate().is_ok());
+        settings.ambient_volume = 101;
+        assert!(settings.validate().is_err());
     }
 }
