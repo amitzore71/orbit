@@ -1,5 +1,5 @@
 use focus_core::{Mode, Settings, WidgetPreferences};
-use focus_storage::{Period, Report, Task};
+use focus_storage::{ActivityHistory, Period, Report, Task};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -27,6 +27,7 @@ pub struct TaskDto {
     pub today_order: i64,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    pub tag: String,
 }
 impl From<&Task> for TaskDto {
     fn from(t: &Task) -> Self {
@@ -41,6 +42,7 @@ impl From<&Task> for TaskDto {
             today_order: t.today_order,
             start_date: t.start_date.clone(),
             end_date: t.end_date.clone(),
+            tag: t.tag.clone(),
         }
     }
 }
@@ -105,12 +107,26 @@ pub struct ReportTask {
     pub done: bool,
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    pub tag: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HourBucketDto {
+    pub label: String,
+    pub active_ms: u64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TagReportDto {
+    pub tag: String,
+    pub active_ms: u64,
+    pub completed: u32,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReportDto {
     pub title: String,
     pub days: Vec<ReportDay>,
     pub tasks: Vec<ReportTask>,
+    pub hours: Vec<HourBucketDto>,
+    pub tags: Vec<TagReportDto>,
     pub active_ms: u64,
     pub completed: u32,
     pub partial_ms: u64,
@@ -143,8 +159,58 @@ impl From<Report> for ReportDto {
                     done: t.done,
                     start_date: t.start_date,
                     end_date: t.end_date,
+                    tag: t.tag,
                 })
                 .collect(),
+            hours: r
+                .hours
+                .into_iter()
+                .map(|h| HourBucketDto {
+                    label: h.label,
+                    active_ms: h.active_ms,
+                })
+                .collect(),
+            tags: r
+                .tags
+                .into_iter()
+                .map(|t| TagReportDto {
+                    tag: t.tag,
+                    active_ms: t.active_ms,
+                    completed: t.completed,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ActivityDayDto {
+    pub date: String,
+    pub active_ms: u64,
+    pub completed: u32,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ActivityHistoryDto {
+    pub days: Vec<ActivityDayDto>,
+    pub current_streak: u32,
+    pub best_streak: u32,
+    pub goal_days: u32,
+}
+impl From<ActivityHistory> for ActivityHistoryDto {
+    fn from(h: ActivityHistory) -> Self {
+        Self {
+            days: h
+                .days
+                .into_iter()
+                .map(|d| ActivityDayDto {
+                    date: d.date,
+                    active_ms: d.active_ms,
+                    completed: d.completed,
+                })
+                .collect(),
+            current_streak: h.current_streak,
+            best_streak: h.best_streak,
+            goal_days: h.goal_days,
         }
     }
 }
@@ -181,6 +247,9 @@ pub enum AppCommand {
     Timer {
         action: TimerAction,
     },
+    ExtendTimer {
+        minutes: u32,
+    },
     SelectMode {
         mode: Mode,
     },
@@ -199,6 +268,8 @@ pub enum AppCommand {
         start_date: Option<String>,
         #[serde(default)]
         end_date: Option<String>,
+        #[serde(default)]
+        tag: String,
     },
     EditTask {
         id: String,
@@ -208,6 +279,8 @@ pub enum AppCommand {
         start_date: Option<String>,
         #[serde(default)]
         end_date: Option<String>,
+        #[serde(default)]
+        tag: String,
     },
     Task {
         id: String,
@@ -227,6 +300,9 @@ pub enum AppCommand {
     },
     Report {
         query: ReportQuery,
+    },
+    ActivityHistory {
+        days: u32,
     },
     SessionDetails {
         id: Option<String>,
@@ -252,6 +328,7 @@ pub enum Reply {
     Saved(u64),
     Snapshot(Box<AppSnapshot>),
     Report(ReportDto),
+    ActivityHistory(ActivityHistoryDto),
     Details(Vec<String>),
     Created(String),
     File(String),

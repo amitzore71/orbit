@@ -77,6 +77,7 @@ fn create(r: &mut Runtime, title: &str, start: bool) -> String {
             start,
             start_date: None,
             end_date: None,
+            tag: String::new(),
         })
         .unwrap()
     {
@@ -175,6 +176,7 @@ fn accepted_storage_failure_pauses_and_retry_does_not_duplicate_creation() {
             start: false,
             start_date: None,
             end_date: None,
+            tag: String::new(),
         })
         .unwrap_err();
     assert!(e.accepted);
@@ -233,6 +235,7 @@ fn concurrent_callers_share_one_serial_runtime() {
                     start: false,
                     start_date: None,
                     end_date: None,
+                    tag: String::new(),
                 })
                 .unwrap()
             })
@@ -326,6 +329,7 @@ fn blocked_resume_clears_suspension_before_a_later_start() {
             start: false,
             start_date: None,
             end_date: None,
+            tag: String::new(),
         })
         .is_err()
     );
@@ -381,6 +385,7 @@ fn starting_focus_captures_start_date_and_manual_dates_update_snapshot() {
         estimate: 2,
         start_date: Some("2026-11-01".into()),
         end_date: Some("2026-11-05".into()),
+        tag: String::new(),
     })
     .unwrap();
     let task = &r.snapshot().unwrap().tasks[0];

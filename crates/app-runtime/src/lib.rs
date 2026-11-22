@@ -410,6 +410,12 @@ impl Runtime {
                 TimerAction::Resume => Command::Resume,
                 TimerAction::Checkpoint => Command::Checkpoint,
             })?,
+            AppCommand::ExtendTimer { minutes } => {
+                if !(1..=60).contains(&minutes) {
+                    return Err("Extension must be 1–60 minutes.".to_string().into());
+                }
+                self.transition(Command::Extend(u64::from(minutes) * 60_000))?;
+            }
             AppCommand::SelectMode { mode } => self.transition(Command::SelectMode(mode))?,
             AppCommand::SelectTask { id } => {
                 let id = id.as_deref().map(|v| self.id(v, true)).transpose()?;
@@ -426,6 +432,7 @@ impl Runtime {
                 start,
                 start_date,
                 end_date,
+                tag,
             } => {
                 let start_date = if start
                     && start_date
@@ -449,6 +456,7 @@ impl Runtime {
                     today,
                     start_date,
                     end_date,
+                    tag,
                 })? {
                     let id = task.id;
                     self.tasks.push(task);
@@ -465,6 +473,7 @@ impl Runtime {
                 estimate,
                 start_date,
                 end_date,
+                tag,
             } => {
                 let id = self.id(&id, false)?;
                 self.store(Operation::EditTask {
@@ -473,6 +482,7 @@ impl Runtime {
                     estimate,
                     start_date,
                     end_date,
+                    tag,
                 })?;
                 self.refresh_tasks()?;
                 self.changed(&["tasks", "reports"]);
@@ -533,6 +543,15 @@ impl Runtime {
                 self.transition(Command::Checkpoint)?;
                 if let Response::Report(r) = self.raw(Self::report_operation(&query))? {
                     return Ok(Reply::Report(r.into()));
+                }
+            }
+            AppCommand::ActivityHistory { days } => {
+                self.transition(Command::Checkpoint)?;
+                if let Response::ActivityHistory(h) = self.raw(Operation::ActivityHistory {
+                    days,
+                    goal_sessions: self.timer.settings.daily_goal_sessions,
+                })? {
+                    return Ok(Reply::ActivityHistory(h.into()));
                 }
             }
             AppCommand::SessionDetails { id, query } => {
