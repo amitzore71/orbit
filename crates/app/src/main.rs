@@ -2,9 +2,9 @@
 use focus_core::{Accent, Density, Mode, MotionLevel, Settings};
 use orbit_runtime::{
     AppCommand, AppSnapshot, Reply, ReportQuery, RuntimeError, RuntimeEvent, RuntimeHandle,
-    TimerAction,
+    TimerAction, TimerSnapshot,
 };
-use platform_win::{Event, Platform, WindowsClock};
+use platform_win::{Event, Platform, TaskbarProgressState, WindowsClock};
 use serde::Serialize;
 use std::{
     path::PathBuf,
@@ -24,11 +24,16 @@ struct Desktop {
     quitting: AtomicBool,
     settings_dirty: AtomicBool,
     main_timer_visible: AtomicBool,
+    main_maximized: AtomicBool,
     mica_active: AtomicBool,
     widgets_revision: AtomicU64,
     file_busy: AtomicBool,
     pending_restore: Mutex<Option<PathBuf>>,
     settings: Mutex<Settings>,
+    last_tooltip: Mutex<String>,
+    last_taskbar: Mutex<(TaskbarProgressState, u64)>,
+    last_timer: Mutex<Option<TimerSnapshot>>,
+    active_task_title: Mutex<Option<String>>,
     startup_probe: Option<PathBuf>,
     started: std::time::Instant,
     ready_recorded: AtomicBool,
@@ -45,6 +50,10 @@ struct Appearance {
     motion_level: MotionLevel,
     system_dark: bool,
     system_reduced_motion: bool,
+}
+#[derive(Clone, Serialize)]
+struct WindowState {
+    maximized: bool,
 }
 #[derive(Clone, Serialize)]
 struct Change {
@@ -71,6 +80,88 @@ fn native_handler(app: tauri::AppHandle) -> platform_win::EventHandler {
 }
 fn hwnd(window: &WebviewWindow) -> Option<isize> {
     window.hwnd().ok().map(|h| h.0 as isize)
+}
+fn format_clock(ms: u64) -> String {
+    let seconds = ms.div_ceil(1000);
+    format!("{:02}:{:02}", seconds / 60, seconds % 60)
+}
+fn sync_shell_progress(app: &tauri::AppHandle, timer: &TimerSnapshot) {
+    let Some(state) = app.try_state::<Desktop>() else {
+        return;
+    };
+    *state.last_timer.lock().unwrap_or_else(|e| e.into_inner()) = Some(timer.clone());
+    let taskbar_enabled = state
+        .settings
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .taskbar_progress;
+    let task_title = state
+        .active_task_title
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+
+    let tooltip = if timer.running {
+        let clock = format_clock(timer.remaining_ms);
+        match (timer.mode, task_title.as_deref()) {
+            (Mode::Focus, Some(title)) if !title.is_empty() => {
+                format!("Orbit · Focus {clock} — {title}")
+            }
+            _ => format!("Orbit · {} {clock}", timer.mode.label()),
+        }
+    } else if timer.started {
+        format!("Orbit · Paused {}", format_clock(timer.remaining_ms))
+    } else {
+        "Orbit · Ready".to_string()
+    };
+    {
+        let mut last = state.last_tooltip.lock().unwrap_or_else(|e| e.into_inner());
+        if *last != tooltip {
+            *last = tooltip.clone();
+            state.platform.tooltip(&tooltip);
+        }
+    }
+    let (tb_state, completed, total, bucket) =
+        if !taskbar_enabled || !timer.started || timer.total_ms == 0 {
+            (TaskbarProgressState::None, 0u64, 0u64, 0u64)
+        } else {
+            let elapsed = timer.total_ms.saturating_sub(timer.remaining_ms);
+            let st = if timer.running {
+                TaskbarProgressState::Normal
+            } else {
+                TaskbarProgressState::Paused
+            };
+            let permille = (elapsed.saturating_mul(1000) / timer.total_ms).min(1000);
+            (st, elapsed, timer.total_ms, permille)
+        };
+    let should_update_taskbar = {
+        let mut last = state.last_taskbar.lock().unwrap_or_else(|e| e.into_inner());
+        if *last != (tb_state, bucket) {
+            *last = (tb_state, bucket);
+            true
+        } else {
+            false
+        }
+    };
+    if should_update_taskbar {
+        let handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(h) = handle.get_webview_window("main").and_then(|w| hwnd(&w)) {
+                platform_win::set_taskbar_progress(h, tb_state, completed, total);
+            }
+        });
+    }
+}
+fn active_title_from_snapshot(snap: &AppSnapshot) -> Option<String> {
+    let id = snap
+        .timer
+        .bound_task
+        .as_deref()
+        .or(snap.timer.selected_task.as_deref())?;
+    snap.tasks
+        .iter()
+        .find(|t| t.id == id && !t.deleted)
+        .map(|t| t.title.clone())
 }
 fn appearance(app: &tauri::AppHandle) {
     let Some(state) = app.try_state::<Desktop>() else {
@@ -117,6 +208,19 @@ fn observers(app: &tauri::AppHandle) {
         s.runtime.set_timer_observers(count);
     }
 }
+fn emit_window_state(app: &tauri::AppHandle, window: &WebviewWindow, force: bool) {
+    if window.label() != "main" {
+        return;
+    }
+    let Some(state) = app.try_state::<Desktop>() else {
+        return;
+    };
+    let maximized = window.is_maximized().unwrap_or(false);
+    let changed = state.main_maximized.swap(maximized, Ordering::AcqRel) != maximized;
+    if force || changed {
+        let _ = window.emit_to("main", "orbit://window-state", WindowState { maximized });
+    }
+}
 fn create_main_window(app: &tauri::AppHandle, visible: bool) -> Result<WebviewWindow, String> {
     let webview_dir = app.state::<Desktop>().webview_dir.clone();
     let main = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
@@ -127,6 +231,8 @@ fn create_main_window(app: &tauri::AppHandle, visible: bool) -> Result<WebviewWi
         .title("Orbit · Local focus workspace")
         .inner_size(1160., 790.)
         .min_inner_size(760., 540.)
+        .resizable(true)
+        .maximizable(true)
         .decorations(false)
         .visible(visible)
         .build()
@@ -416,7 +522,8 @@ async fn orbit_command(
                     | TimerAction::Toggle
                     | TimerAction::Skip
                     | TimerAction::Reset
-            } | AppCommand::SelectMode { .. }
+            } | AppCommand::ExtendTimer { .. }
+                | AppCommand::SelectMode { .. }
                 | AppCommand::SelectTask { .. }
                 | AppCommand::StartTask { .. }
                 | AppCommand::CreateTask { start: true, .. }
@@ -442,6 +549,25 @@ async fn window_command(
 ) -> Result<(), RuntimeError> {
     match action.as_str() {
         "minimize" => window.minimize().map_err(|e| error(e.to_string()))?,
+        "toggle_maximize" if window.label() == "main" => {
+            if window.is_maximized().unwrap_or(false) {
+                window.unmaximize().map_err(|e| error(e.to_string()))?;
+            } else {
+                window.maximize().map_err(|e| error(e.to_string()))?;
+            }
+            emit_window_state(&app, &window, true);
+            observers(&app);
+        }
+        "maximize" if window.label() == "main" => {
+            window.maximize().map_err(|e| error(e.to_string()))?;
+            emit_window_state(&app, &window, true);
+            observers(&app);
+        }
+        "unmaximize" if window.label() == "main" => {
+            window.unmaximize().map_err(|e| error(e.to_string()))?;
+            emit_window_state(&app, &window, true);
+            observers(&app);
+        }
         "close" | "hide" => {
             if window.label() == "main" {
                 window.hide().map_err(|e| error(e.to_string()))?;
@@ -566,6 +692,12 @@ async fn capture_shortcuts(
     })
     .await
     .map_err(|e| error(e.to_string()))?
+}
+#[tauri::command]
+fn get_window_state(window: WebviewWindow) -> WindowState {
+    WindowState {
+        maximized: window.is_maximized().unwrap_or(false),
+    }
 }
 #[tauri::command]
 fn get_appearance(app: tauri::AppHandle) -> Appearance {
@@ -747,6 +879,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             set_settings_dirty,
             set_timer_visibility,
             capture_shortcuts,
+            get_window_state,
             get_appearance,
             frontend_ready,
             file_operation,
@@ -760,6 +893,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Arc::new(WindowsClock),
                 Arc::new(move |event| match event {
                     RuntimeEvent::Timer(s) => {
+                        sync_shell_progress(&events_handle, &s);
                         // Hidden WebViews resync on reveal; do not wake their renderers every second.
                         for window in events_handle.webview_windows().into_values() {
                             if window.is_visible().unwrap_or(false)
@@ -771,13 +905,23 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     RuntimeEvent::Changed { revision, domains } => {
                         let widgets = domains.contains(&"widgets");
+                        let shell_sync = domains.contains(&"timer") || domains.contains(&"tasks");
                         let _ = events_handle.emit("orbit://changed", Change { revision, domains });
-                        if widgets {
+                        if widgets || shell_sync {
                             let app = events_handle.clone();
                             tauri::async_runtime::spawn_blocking(move || {
                                 if let Some(s) = app.try_state::<Desktop>() {
                                     if let Ok(v) = snapshot(&s.runtime) {
-                                        sync_widgets(&app, v);
+                                        if shell_sync {
+                                            *s.active_task_title
+                                                .lock()
+                                                .unwrap_or_else(|e| e.into_inner()) =
+                                                active_title_from_snapshot(&v);
+                                            sync_shell_progress(&app, &v.timer);
+                                        }
+                                        if widgets {
+                                            sync_widgets(&app, v);
+                                        }
                                     }
                                 }
                             });
@@ -818,6 +962,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             *saved = settings;
                             drop(saved);
+                            let last_timer = s
+                                .last_timer
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .clone();
+                            if let Some(last_timer) = last_timer {
+                                sync_shell_progress(&app, &last_timer);
+                            }
                             if !warnings.is_empty() {
                                 let _ = app.emit("orbit://error", error(warnings.join(" ")));
                             }
@@ -844,11 +996,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 quitting: AtomicBool::new(false),
                 settings_dirty: AtomicBool::new(false),
                 main_timer_visible: AtomicBool::new(true),
+                main_maximized: AtomicBool::new(false),
                 mica_active: AtomicBool::new(false),
                 widgets_revision: AtomicU64::new(0),
                 file_busy: AtomicBool::new(false),
                 pending_restore: Mutex::new(None),
                 settings: Mutex::new(initial.settings.clone()),
+                last_tooltip: Mutex::new(String::new()),
+                last_taskbar: Mutex::new((TaskbarProgressState::None, 0)),
+                last_timer: Mutex::new(Some(initial.timer.clone())),
+                active_task_title: Mutex::new(active_title_from_snapshot(&initial)),
                 startup_probe: args_for_setup
                     .iter()
                     .any(|a| a == "--startup-probe")
@@ -934,7 +1091,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         });
                     }
                 }
-                tauri::WindowEvent::Resized(_) | tauri::WindowEvent::Focused(_) => observers(app),
+                tauri::WindowEvent::Resized(_) => {
+                    if window.label() == "main" {
+                        if let Some(w) = app.get_webview_window("main") {
+                            emit_window_state(app, &w, false);
+                        }
+                    }
+                    observers(app);
+                }
+                tauri::WindowEvent::Focused(_) => observers(app),
                 _ => {}
             }
         })

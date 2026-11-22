@@ -178,6 +178,12 @@ pub fn choose_file(kind: u32, owner: Option<isize>, callback: EventHandler) {
         });
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskbarProgressState {
+    None,
+    Normal,
+    Paused,
+}
 enum NativeCommand {
     Hotkeys([String; 3], mpsc::SyncSender<Vec<String>>),
     Tooltip(String),
@@ -221,7 +227,40 @@ struct NativeState {
     taskbar_created: u32,
     hotkeys: [String; 3],
 }
-thread_local! { static NATIVE: RefCell<Option<NativeState>> = const { RefCell::new(None) }; }
+thread_local! {
+    static NATIVE: RefCell<Option<NativeState>> = const { RefCell::new(None) };
+    static TASKBAR: RefCell<Option<ITaskbarList3>> = const { RefCell::new(None) };
+}
+
+/// Update the Windows taskbar progress bar for `hwnd`. Must be called on the UI thread that owns `hwnd`.
+pub fn set_taskbar_progress(hwnd: isize, state: TaskbarProgressState, completed: u64, total: u64) {
+    unsafe {
+        TASKBAR.with_borrow_mut(|slot| {
+            if slot.is_none()
+                && let Ok(tb) =
+                    CoCreateInstance::<_, ITaskbarList3>(&TaskbarList, None, CLSCTX_INPROC_SERVER)
+                && tb.HrInit().is_ok()
+            {
+                *slot = Some(tb);
+            }
+            if let Some(tb) = slot.as_ref() {
+                let target = HWND(hwnd as *mut c_void);
+                let flag = match state {
+                    TaskbarProgressState::None => TBPF_NOPROGRESS,
+                    TaskbarProgressState::Normal => TBPF_NORMAL,
+                    TaskbarProgressState::Paused => TBPF_PAUSED,
+                };
+                if tb.SetProgressState(target, flag).is_err() {
+                    *slot = None;
+                    return;
+                }
+                if state != TaskbarProgressState::None && total > 0 {
+                    let _ = tb.SetProgressValue(target, completed.min(total), total);
+                }
+            }
+        });
+    }
+}
 
 pub struct Instance {
     handle: HANDLE,
@@ -969,7 +1008,11 @@ unsafe fn rounded(hwnd: HWND) {
 pub fn foreground(hwnd: isize) {
     unsafe {
         let hwnd = HWND(hwnd as *mut c_void);
-        let _ = ShowWindow(hwnd, SW_RESTORE);
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        } else {
+            let _ = ShowWindow(hwnd, SW_SHOW);
+        }
         let _ = SetForegroundWindow(hwnd);
     }
 }
