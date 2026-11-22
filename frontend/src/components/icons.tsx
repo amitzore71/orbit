@@ -112,6 +112,73 @@ export function IconMinus({ size = 15, ...props }: IconProps) {
   );
 }
 
+export function IconMaximize({ size = 14, ...props }: IconProps) {
+  return (
+    <Svg size={size} {...props}>
+      <rect x="5" y="5" width="14" height="14" rx="1.8" />
+    </Svg>
+  );
+}
+
+export function IconRestore({ size = 14, ...props }: IconProps) {
+  return (
+    <Svg size={size} {...props}>
+      <rect x="4.5" y="7.5" width="11.5" height="11.5" rx="1.6" />
+      <path d="M8.5 7.5V6a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 19.5 6v8a1.5 1.5 0 0 1-1.5 1.5H16" />
+    </Svg>
+  );
+}
+
+export function IconExpand({ size = 15, ...props }: IconProps) {
+  return (
+    <Svg size={size} {...props}>
+      <path d="M9 4.5H4.5V9M15 4.5h4.5V9M9 19.5H4.5V15M15 19.5h4.5V15" />
+    </Svg>
+  );
+}
+
+export function IconCompress({ size = 15, ...props }: IconProps) {
+  return (
+    <Svg size={size} {...props}>
+      <path d="M4.5 9H9V4.5M19.5 9H15V4.5M4.5 15H9v4.5M19.5 15H15v4.5" />
+    </Svg>
+  );
+}
+
+export function IconFlame({ size = 15, ...props }: IconProps) {
+  return (
+    <Svg size={size} {...props}>
+      <path d="M12.3 3.5c.8 3.2 4.2 4.9 4.2 9.1a4.5 4.5 0 1 1-9 0c0-2.3 1.1-4.1 2.4-5.5.2 1.6 1 2.4 1.9 2.6-.7-2-.4-4.2.5-6.2Z" />
+    </Svg>
+  );
+}
+
+export function IconWaves({ size = 15, ...props }: IconProps) {
+  return (
+    <Svg size={size} {...props}>
+      <path d="M3.5 10.5v3M7.5 7v10M12 4.5v15M16.5 8v8M20.5 10.5v3" />
+    </Svg>
+  );
+}
+
+export function IconTag({ size = 14, ...props }: IconProps) {
+  return (
+    <Svg size={size} {...props}>
+      <path d="M12.5 4H6a2 2 0 0 0-2 2v6.5a2 2 0 0 0 .6 1.4l6.5 6.5a2 2 0 0 0 2.8 0l5.5-5.5a2 2 0 0 0 0-2.8l-6.5-6.5A2 2 0 0 0 12.5 4Z" />
+      <circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+export function IconClock({ size = 15, ...props }: IconProps) {
+  return (
+    <Svg size={size} {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 1.8" />
+    </Svg>
+  );
+}
+
 export function IconClose({ size = 15, ...props }: IconProps) {
   return (
     <Svg size={size} {...props}>

@@ -1,7 +1,14 @@
 'use client';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { OrbitState } from '@/lib/use-orbit';
-import { duration, filterTasks, type Task, type TaskAction } from '@/lib/protocol';
+import {
+  duration,
+  filterTasks,
+  SUGGESTED_TAGS,
+  tagTone,
+  type Task,
+  type TaskAction,
+} from '@/lib/protocol';
 import { useWorkspaceState } from '@/lib/use-workspace-state';
 import { useExperience, WorkspaceContext } from '@/lib/experience';
 import {
@@ -17,6 +24,7 @@ import {
   IconPlus,
   IconReset,
   IconSearch,
+  IconTag,
   IconTrash,
 } from './icons';
 import { Button, Empty, IconButton, PanelHeading, Sheet } from './ui';
@@ -34,23 +42,43 @@ export function TasksView({
   const data = state.snapshot!;
   const [view, setView] = useWorkspaceState('tasks.view', 'today');
   const [search, setSearch] = useWorkspaceState('tasks.search', '');
+  const [tagFilter, setTagFilter] = useWorkspaceState('tasks.tag', '');
   const [title, setTitle] = useState('');
   const [estimate, setEstimate] = useState(1);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [tag, setTag] = useState('');
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [undo, setUndo] = useState<string | null>(null);
   const [acceptedTitle, setAcceptedTitle] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
+  const availableTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of data.tasks) {
+      if (!t.deleted && t.tag) set.add(t.tag);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [data.tasks]);
+
+  const activeTagFilter = !compact && availableTags.includes(tagFilter) ? tagFilter : '';
+
   const rows = useMemo(
-    () => filterTasks(data.tasks, compact ? 'today' : view, data.today, compact ? '' : search),
-    [data.tasks, compact, view, data.today, search],
+    () =>
+      filterTasks(
+        data.tasks,
+        compact ? 'today' : view,
+        data.today,
+        compact ? '' : search,
+        activeTagFilter,
+      ),
+    [data.tasks, compact, view, data.today, search, activeTagFilter],
   );
   const titleError = [...title.trim()].length > 240 ? 'Use 240 characters or fewer.' : '';
   const estimateError =
     !Number.isInteger(estimate) || estimate < 1 || estimate > 99 ? 'Enter 1–99 sessions.' : '';
+  const tagError = [...tag.trim()].length > 32 ? 'Use 32 characters or fewer for a tag.' : '';
   const dateError =
     startDate && endDate && endDate < startDate
       ? 'End date cannot be earlier than start date.'
@@ -83,7 +111,14 @@ export function TasksView({
   }, [acceptedTitle, data.storage_blocked]);
 
   async function add(start: boolean) {
-    if (!title.trim() || [...title.trim()].length > 240 || adding || estimateError || dateError) {
+    if (
+      !title.trim() ||
+      [...title.trim()].length > 240 ||
+      adding ||
+      estimateError ||
+      dateError ||
+      tagError
+    ) {
       return;
     }
     setAdding(true);
@@ -97,11 +132,13 @@ export function TasksView({
         start,
         start_date: startDate || null,
         end_date: endDate || null,
+        tag: (tag.trim() || activeTagFilter).slice(0, 32),
       });
       setTitle(prev => (prev === submitted ? '' : prev));
       setEstimate(1);
       setStartDate('');
       setEndDate('');
+      setTag('');
       input.current?.focus();
     } catch (e) {
       if (e && typeof e === 'object' && 'accepted' in e && e.accepted) {
@@ -129,6 +166,7 @@ export function TasksView({
     !titleError &&
     !estimateError &&
     !dateError &&
+    !tagError &&
     !adding &&
     !data.storage_blocked;
 
@@ -201,6 +239,32 @@ export function TasksView({
         </div>
       )}
 
+      {!compact && availableTags.length > 0 && (
+        <div className="tag-filter-bar" role="group" aria-label="Filter by tag">
+          <IconTag size={13} className="tag-filter-icon" />
+          <button
+            type="button"
+            className={`tag-filter-chip ${!activeTagFilter ? 'active' : ''}`}
+            aria-pressed={!activeTagFilter}
+            onClick={() => setTagFilter('')}
+          >
+            All tags
+          </button>
+          {availableTags.map(t => (
+            <button
+              key={t}
+              type="button"
+              className={`tag-filter-chip ${activeTagFilter === t ? 'active' : ''}`}
+              data-tone={tagTone(t)}
+              aria-pressed={activeTagFilter === t}
+              onClick={() => setTagFilter(activeTagFilter === t ? '' : t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
       {!compact && carried > 0 && (
         <button
           className={`carry-forward ${view === 'carry' ? 'active' : ''}`}
@@ -236,6 +300,23 @@ export function TasksView({
           />
           {!compact && (
             <>
+              <label className="tag-input-field">
+                <IconTag size={13} />
+                <input
+                  aria-label="Task tag"
+                  placeholder="Tag…"
+                  list="orbit-tag-suggestions"
+                  maxLength={32}
+                  value={tag}
+                  onChange={e => setTag(e.target.value)}
+                  disabled={adding || data.storage_blocked}
+                />
+                <datalist id="orbit-tag-suggestions">
+                  {Array.from(new Set([...availableTags, ...SUGGESTED_TAGS])).map(t => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
+              </label>
               <label className="estimate-input">
                 <input
                   aria-label="Estimated sessions"
@@ -293,9 +374,9 @@ export function TasksView({
         </form>
       )}
 
-      {(titleError || estimateError || dateError) && (
+      {(titleError || estimateError || dateError || tagError) && (
         <p className="field-error" role="alert">
-          {titleError || estimateError || dateError}
+          {titleError || estimateError || dateError || tagError}
         </p>
       )}
 
@@ -324,7 +405,14 @@ export function TasksView({
                 onClick={() => setSelected(task.id)}
                 title={task.title}
               >
-                <span>{task.title}</span>
+                <span className="task-title-line">
+                  <span>{task.title}</span>
+                  {task.tag && (
+                    <span className="tag-pill" data-tone={tagTone(task.tag)} aria-hidden="true">
+                      {task.tag}
+                    </span>
+                  )}
+                </span>
                 <small>
                   <span className="mono-meta">
                     {task.completed} / {task.estimate} sessions
@@ -560,11 +648,21 @@ function TaskInspector({
   const [estimate, setEstimate] = useState(task.estimate);
   const [startDate, setStartDate] = useState(task.start_date ?? '');
   const [endDate, setEndDate] = useState(task.end_date ?? '');
+  const [tag, setTag] = useState(task.tag ?? '');
 
   useEffect(() => {
     setStartDate(task.start_date ?? '');
     setEndDate(task.end_date ?? '');
-  }, [task.start_date, task.end_date]);
+    setTag(task.tag ?? '');
+  }, [task.start_date, task.end_date, task.tag]);
+
+  const existingTags = useMemo(() => {
+    const set = new Set<string>(SUGGESTED_TAGS);
+    for (const t of state.snapshot?.tasks ?? []) {
+      if (!t.deleted && t.tag) set.add(t.tag);
+    }
+    return [...set];
+  }, [state.snapshot?.tasks]);
 
   const dateError =
     startDate && endDate && endDate < startDate
@@ -572,6 +670,7 @@ function TaskInspector({
       : '';
   const invalidTitle = [...title.trim()].length > 240 || !title.trim();
   const invalidEstimate = !Number.isInteger(estimate) || estimate < 1 || estimate > 99;
+  const invalidTag = [...tag.trim()].length > 32;
 
   return (
     <Sheet title="Task details" close={close}>
@@ -580,7 +679,7 @@ function TaskInspector({
         className="detail-form"
         onSubmit={e => {
           e.preventDefault();
-          if (dateError || invalidTitle || invalidEstimate) return;
+          if (dateError || invalidTitle || invalidEstimate || invalidTag) return;
           void state
             .run({
               type: 'edit_task',
@@ -589,6 +688,7 @@ function TaskInspector({
               estimate,
               start_date: startDate || null,
               end_date: endDate || null,
+              tag: tag.trim(),
             })
             .then(() => state.setNotice('Task updated.'))
             .catch(() => {});
@@ -613,6 +713,29 @@ function TaskInspector({
             onChange={e => setEstimate(Number(e.target.value))}
           />
         </label>
+        <label>
+          Tag / category
+          <input
+            aria-label="Edit task tag"
+            placeholder="e.g. Deep Work, Client, Study"
+            maxLength={32}
+            value={tag}
+            onChange={e => setTag(e.target.value)}
+          />
+        </label>
+        <div className="detail-tag-chips" role="group" aria-label="Quick tags">
+          {existingTags.slice(0, 8).map(t => (
+            <button
+              key={t}
+              type="button"
+              className={`tag-filter-chip ${tag.trim() === t ? 'active' : ''}`}
+              data-tone={tagTone(t)}
+              onClick={() => setTag(tag.trim() === t ? '' : t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
         <div className="detail-dates">
           <label>
             <span>

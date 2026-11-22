@@ -5,7 +5,14 @@ import type { Mode, Task } from '@/lib/protocol';
 import { useLiveTimer } from '@/lib/use-orbit';
 import { useExperience } from '@/lib/experience';
 import { useDismissable } from '@/lib/use-dismissable';
-import { timeLabel } from '@/lib/protocol';
+import {
+  AMBIENT_PRESETS,
+  FOCUS_PRESETS,
+  normalizeSettings,
+  timeLabel,
+  type AmbientSound,
+  type FocusPreset,
+} from '@/lib/protocol';
 import {
   IconArrowUpRight,
   IconCheck,
@@ -14,6 +21,7 @@ import {
   IconPlay,
   IconReset,
   IconSkip,
+  IconWaves,
 } from './icons';
 import { Button, IconButton } from './ui';
 
@@ -142,6 +150,7 @@ export function TimerControls({ state, small = false }: { state: OrbitState; sma
       : timer.mode === 'Focus'
         ? 'Start focusing'
         : 'Start break';
+  const canExtend = !small && timer.started && timer.total_ms < 180 * 60_000;
   return (
     <div className={`timer-controls ${small ? 'small-controls' : ''}`}>
       <IconButton
@@ -170,6 +179,18 @@ export function TimerControls({ state, small = false }: { state: OrbitState; sma
       >
         <IconSkip size={18} />
       </IconButton>
+      {canExtend && (
+        <button
+          type="button"
+          className="extend-pill"
+          aria-label="Add 5 minutes"
+          title="Extend session by 5 minutes"
+          disabled={state.snapshot?.storage_blocked || !!state.pending}
+          onClick={() => state.act({ type: 'extend_timer', minutes: 5 })}
+        >
+          +5m
+        </button>
+      )}
     </div>
   );
 }
@@ -177,9 +198,68 @@ export function TimerControls({ state, small = false }: { state: OrbitState; sma
 export function FocusTimer({ state }: { state: OrbitState }) {
   const { snapshot: data, timer } = state;
   const [picker, setPicker] = useState(false);
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const [ambientOpen, setAmbientOpen] = useState(false);
   const [search, setSearch] = useState('');
   const pickerRoot = useDismissable(picker, () => setPicker(false));
+  const presetRoot = useDismissable(presetsOpen, () => setPresetsOpen(false));
+  const ambientRoot = useDismissable(ambientOpen, () => setAmbientOpen(false));
   if (!data || !timer) return null;
+
+  const ambientSound: AmbientSound = data.settings.ambient_sound ?? 'off';
+  const ambientVolume = data.settings.ambient_volume ?? 35;
+  const ambientDuringBreaks = data.settings.ambient_during_breaks ?? false;
+  const ambientMeta =
+    AMBIENT_PRESETS.find(a => a.id === ambientSound) ?? AMBIENT_PRESETS[0];
+  const ambientActive =
+    ambientSound !== 'off' &&
+    timer.running &&
+    (timer.mode === 'Focus' || ambientDuringBreaks);
+
+  async function updateAmbient(patch: {
+    ambient_sound?: AmbientSound;
+    ambient_volume?: number;
+    ambient_during_breaks?: boolean;
+  }) {
+    try {
+      await state.run({
+        type: 'save_settings',
+        settings: normalizeSettings({
+          ...data!.settings,
+          ...patch,
+        }),
+      });
+    } catch {
+      /* Shared error toast owns failure feedback. */
+    }
+  }
+
+  const activePreset = FOCUS_PRESETS.find(
+    p =>
+      p.focus_minutes === data.settings.focus_minutes &&
+      p.short_minutes === data.settings.short_minutes &&
+      p.long_minutes === data.settings.long_minutes,
+  );
+
+  async function applyPreset(preset: FocusPreset) {
+    setPresetsOpen(false);
+    try {
+      await state.run({
+        type: 'save_settings',
+        settings: normalizeSettings({
+          ...data!.settings,
+          focus_minutes: preset.focus_minutes,
+          short_minutes: preset.short_minutes,
+          long_minutes: preset.long_minutes,
+        }),
+      });
+      state.setNotice(
+        `Preset applied: ${preset.name} (${preset.focus_minutes}m focus · ${preset.short_minutes}m break).`,
+      );
+    } catch {
+      /* Shared error toast owns failure feedback. */
+    }
+  }
 
   const currentId = timer.started ? timer.bound_task : timer.selected_task;
   const task = data.tasks.find(t => t.id === currentId);
@@ -294,9 +374,130 @@ export function FocusTimer({ state }: { state: OrbitState }) {
       </div>
 
       <div className="stage-footer">
-        <span className="mono-meta">
-          {data.settings.focus_minutes}m focus · {data.settings.short_minutes}m break
-        </span>
+        <div className="preset-control">
+          <button
+            type="button"
+            className="preset-trigger mono-meta"
+            aria-expanded={presetsOpen}
+            aria-label="Choose focus preset"
+            disabled={data.storage_blocked || !!state.pending}
+            onClick={() => setPresetsOpen(v => !v)}
+          >
+            <span>
+              {activePreset ? `${activePreset.name} · ` : ''}
+              {data.settings.focus_minutes}m / {data.settings.short_minutes}m
+            </span>
+            <IconChevronDown size={13} />
+          </button>
+          {presetsOpen && (
+            <div
+              ref={presetRoot as React.RefObject<HTMLDivElement>}
+              className="preset-popover"
+              role="dialog"
+              aria-label="Focus presets"
+            >
+              <span className="eyebrow">Session presets</span>
+              {FOCUS_PRESETS.map(preset => {
+                const selected = activePreset?.id === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={selected ? 'selected' : ''}
+                    onClick={() => void applyPreset(preset)}
+                  >
+                    <span>
+                      <strong>{preset.name}</strong>
+                      <small>
+                        {preset.focus_minutes}m focus · {preset.short_minutes}m short ·{' '}
+                        {preset.long_minutes}m long
+                      </small>
+                    </span>
+                    {selected && <IconCheck size={14} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="ambient-control">
+          <button
+            type="button"
+            className={`preset-trigger ambient-trigger ${ambientSound !== 'off' ? 'is-armed' : ''} ${ambientActive ? 'is-playing' : ''}`}
+            aria-expanded={ambientOpen}
+            aria-label="Ambient focus soundscape"
+            disabled={data.storage_blocked || !!state.pending}
+            onClick={() => setAmbientOpen(v => !v)}
+          >
+            <IconWaves size={13} />
+            <span>{ambientSound === 'off' ? 'Soundscape' : ambientMeta.name}</span>
+            {ambientActive && (
+              <span className="eq-bars" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            )}
+            <IconChevronDown size={13} />
+          </button>
+          {ambientOpen && (
+            <div
+              ref={ambientRoot as React.RefObject<HTMLDivElement>}
+              className="preset-popover ambient-popover"
+              role="dialog"
+              aria-label="Ambient soundscape"
+            >
+              <span className="eyebrow">Focus soundscape</span>
+              {AMBIENT_PRESETS.map(item => {
+                const selected = ambientSound === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={selected ? 'selected' : ''}
+                    onClick={() => {
+                      void updateAmbient({ ambient_sound: item.id });
+                    }}
+                  >
+                    <span>
+                      <strong>{item.name}</strong>
+                      <small>{item.hint}</small>
+                    </span>
+                    {selected && <IconCheck size={14} />}
+                  </button>
+                );
+              })}
+              {ambientSound !== 'off' && (
+                <div className="ambient-popover-controls">
+                  <label className="ambient-slider-row">
+                    <span>Volume</span>
+                    <input
+                      aria-label="Ambient soundscape volume"
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={ambientVolume}
+                      onChange={e =>
+                        void updateAmbient({ ambient_volume: Number(e.target.value) })
+                      }
+                    />
+                    <strong className="mono-meta">{ambientVolume}%</strong>
+                  </label>
+                  <label className="ambient-check-row">
+                    <input
+                      type="checkbox"
+                      checked={ambientDuringBreaks}
+                      onChange={e =>
+                        void updateAmbient({ ambient_during_breaks: e.target.checked })
+                      }
+                    />
+                    <span>Keep playing during breaks</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <span>Sleep never counts as focus</span>
       </div>
     </section>

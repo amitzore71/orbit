@@ -1,7 +1,15 @@
 'use client';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { adapter, normalizeError, windowAction } from '@/lib/bridge';
-import { duration, motionPreference, type MotionLevel, type Settings } from '@/lib/protocol';
+import { AmbientEngine } from '@/lib/ambient';
+import {
+  duration,
+  motionPreference,
+  normalizeSettings,
+  type MotionLevel,
+  type Settings,
+  type WindowState,
+} from '@/lib/protocol';
 import { useOrbit, type OrbitState } from '@/lib/use-orbit';
 import { ExperienceContext, WorkspaceContext } from '@/lib/experience';
 import {
@@ -9,17 +17,23 @@ import {
   IconArrowUpRight,
   IconCheckCircle,
   IconClose,
+  IconCompress,
+  IconExpand,
   IconFocus,
   IconInsights,
   IconLock,
+  IconMaximize,
   IconMinus,
   IconReset,
+  IconRestore,
+  IconSearch,
   IconSettings,
   IconTasks,
 } from './icons';
 import { Brand, Button, IconButton } from './ui';
 import { FocusTimer } from './timer';
 import { TasksView } from './tasks';
+import { CommandPalette } from './command-palette';
 
 const ReportsView = lazy(() => import('./reports').then(m => ({ default: m.ReportsView })));
 const SettingsView = lazy(() => import('./settings').then(m => ({ default: m.SettingsView })));
@@ -69,6 +83,9 @@ export function OrbitApp() {
   const [page, setPage] = useState<Page>('focus');
   const [draft, setDraft] = useState<Settings | null>(null);
   const [confirmQuit, setConfirmQuit] = useState(false);
+  const [maximized, setMaximized] = useState(false);
+  const [zen, setZen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const preview = draft ?? source.snapshot?.settings;
   const systemReduced =
@@ -104,6 +121,34 @@ export function OrbitApp() {
   const baseline = useRef('');
   const draftRef = useRef<Settings | null>(null);
   draftRef.current = draft;
+  const ambientRef = useRef<AmbientEngine | null>(null);
+
+  useEffect(() => {
+    const engine = new AmbientEngine();
+    ambientRef.current = engine;
+    return () => {
+      engine.dispose();
+      ambientRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const settings = preview;
+    const timer = state.timer;
+    if (!ambientRef.current || !settings || !timer) return;
+    const preset = settings.ambient_sound ?? 'off';
+    const volume = settings.ambient_volume ?? 35;
+    const duringBreaks = settings.ambient_during_breaks ?? false;
+    const shouldPlay =
+      timer.running && (timer.mode === 'Focus' || duringBreaks) && preset !== 'off';
+    ambientRef.current.sync(preset, volume, shouldPlay);
+  }, [
+    preview?.ambient_sound,
+    preview?.ambient_volume,
+    preview?.ambient_during_breaks,
+    state.timer?.running,
+    state.timer?.mode,
+  ]);
 
   const native = (action: string) => {
     void windowAction(action).catch(e => state.setError(normalizeError(e)));
@@ -127,7 +172,12 @@ export function OrbitApp() {
     if (!settings) return;
     const saved = JSON.stringify(settings);
     if (saved !== baseline.current) {
-      if (!draftRef.current || JSON.stringify(draftRef.current) === baseline.current) {
+      if (
+        !draftRef.current ||
+        JSON.stringify(draftRef.current) === baseline.current ||
+        JSON.stringify(normalizeSettings(draftRef.current)) ===
+          JSON.stringify(normalizeSettings(settings))
+      ) {
         setDraft({ ...settings });
       }
       baseline.current = saved;
@@ -163,6 +213,85 @@ export function OrbitApp() {
     };
   }, []);
 
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    let ended = false;
+    void adapter()
+      .invoke<WindowState>('get_window_state')
+      .then(s => {
+        if (!ended && s && typeof s.maximized === 'boolean') setMaximized(s.maximized);
+      })
+      .catch(() => {});
+    void adapter()
+      .listen<WindowState>('orbit://window-state', s => {
+        if (!ended && s && typeof s.maximized === 'boolean') setMaximized(s.maximized);
+      })
+      .then(fn => {
+        if (ended) fn();
+        else cleanup = fn;
+      })
+      .catch(() => {});
+    return () => {
+      ended = true;
+      cleanup?.();
+    };
+  }, []);
+
+  const toggleZen = () => {
+    setZen(prev => {
+      const next = !prev;
+      if (next) setPage('focus');
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(v => !v);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        toggleZen();
+        return;
+      }
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setZen(false);
+          setPage('focus');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          setZen(false);
+          setPage('tasks');
+        } else if (e.key === '3') {
+          e.preventDefault();
+          setZen(false);
+          setPage('reports');
+        } else if (e.key === '4') {
+          e.preventDefault();
+          setZen(false);
+          setPage('settings');
+        }
+        return;
+      }
+      if (
+        e.key === 'Escape' &&
+        zen &&
+        !paletteOpen &&
+        !confirmQuit &&
+        !document.querySelector('[role="dialog"], [role="alertdialog"]')
+      ) {
+        e.preventDefault();
+        setZen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [zen, paletteOpen, confirmQuit]);
+
   const theme = state.appearance.high_contrast
     ? 'contrast'
     : state.appearance.dark
@@ -179,6 +308,8 @@ export function OrbitApp() {
     [state.snapshot],
   );
 
+  const dailyGoal = state.snapshot?.settings.daily_goal_sessions ?? 4;
+  const goalMet = !!state.snapshot && state.snapshot.today_completed >= dailyGoal;
   const meta = pageMeta[page];
 
   return (
@@ -192,6 +323,8 @@ export function OrbitApp() {
           data-motion={motionLevel}
           data-mica={!!state.appearance.mica_active}
           data-reduced-motion={state.appearance.reduced_motion}
+          data-maximized={maximized}
+          data-zen={zen}
         >
           {!state.snapshot || !state.timer ? (
             <div className="connection-screen">
@@ -245,7 +378,10 @@ export function OrbitApp() {
                 </nav>
 
                 <div className="sidebar-bottom">
-                  <div className="sidebar-pulse" aria-label="Today summary">
+                  <div
+                    className={`sidebar-pulse ${goalMet ? 'goal-met' : ''}`}
+                    aria-label="Today summary"
+                  >
                     <div className="pulse-row">
                       <span>Today</span>
                       <strong className="mono-meta">{duration(state.snapshot.today_ms)}</strong>
@@ -255,15 +391,14 @@ export function OrbitApp() {
                         style={{
                           transform: `scaleX(${Math.min(
                             1,
-                            state.snapshot.today_completed /
-                              Math.max(state.snapshot.settings.long_interval, 1),
+                            state.snapshot.today_completed / Math.max(dailyGoal, 1),
                           )})`,
                         }}
                       />
                     </div>
                     <span className="pulse-meta">
-                      {state.snapshot.today_completed}{' '}
-                      {state.snapshot.today_completed === 1 ? 'session' : 'sessions'} completed
+                      {state.snapshot.today_completed} / {dailyGoal} daily goal
+                      {goalMet ? ' · Reached' : ''}
                     </span>
                   </div>
 
@@ -286,13 +421,32 @@ export function OrbitApp() {
               </aside>
 
               <div className="app-body">
-                <header className="titlebar" data-tauri-drag-region>
+                <header
+                  className="titlebar"
+                  data-tauri-drag-region
+                  onDoubleClick={e => {
+                    if ((e.target as HTMLElement).closest('button, a, input, [role="button"]')) {
+                      return;
+                    }
+                    native('toggle_maximize');
+                  }}
+                >
                   <div className="breadcrumbs">
                     <span>Orbit</span>
                     <span className="crumb-sep">/</span>
-                    <strong>{meta.crumb}</strong>
+                    <strong>{zen ? 'Zen Focus' : meta.crumb}</strong>
                   </div>
                   <div className="titlebar-right">
+                    <button
+                      type="button"
+                      className="palette-trigger"
+                      aria-label="Open command palette"
+                      onClick={() => setPaletteOpen(true)}
+                    >
+                      <IconSearch size={13} />
+                      <span>Quick actions</span>
+                      <kbd>Ctrl+K</kbd>
+                    </button>
                     <span className="saved-status">
                       <span className={state.pending ? 'pending-dot' : 'status-dot'} />
                       {state.snapshot.storage_blocked
@@ -302,10 +456,27 @@ export function OrbitApp() {
                           : 'Stored on device'}
                     </span>
                     <div className="window-controls">
+                      <IconButton
+                        label={zen ? 'Exit Zen mode' : 'Zen focus mode'}
+                        className={zen ? 'active' : ''}
+                        onClick={toggleZen}
+                      >
+                        {zen ? <IconCompress size={14} /> : <IconExpand size={14} />}
+                      </IconButton>
                       <IconButton label="Minimize Orbit" onClick={() => native('minimize')}>
                         <IconMinus size={14} />
                       </IconButton>
-                      <IconButton label="Hide Orbit to tray" onClick={() => native('hide')}>
+                      <IconButton
+                        label={maximized ? 'Restore Orbit window' : 'Maximize Orbit'}
+                        onClick={() => native('toggle_maximize')}
+                      >
+                        {maximized ? <IconRestore size={13} /> : <IconMaximize size={13} />}
+                      </IconButton>
+                      <IconButton
+                        label="Hide Orbit to tray"
+                        className="window-close"
+                        onClick={() => native('hide')}
+                      >
                         <IconClose size={14} />
                       </IconButton>
                     </div>
@@ -435,6 +606,20 @@ export function OrbitApp() {
                   </section>
                 </div>
               )}
+              <CommandPalette
+                open={paletteOpen}
+                close={() => setPaletteOpen(false)}
+                state={state}
+                page={page}
+                setPage={p => {
+                  setZen(false);
+                  setPage(p);
+                }}
+                zen={zen}
+                toggleZen={toggleZen}
+                maximized={maximized}
+                toggleMaximize={() => native('toggle_maximize')}
+              />
             </>
           )}
 

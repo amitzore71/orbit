@@ -1,7 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import type { OrbitState } from '@/lib/use-orbit';
-import { motionPreference, normalizeSettings, type Settings } from '@/lib/protocol';
+import {
+  AMBIENT_PRESETS,
+  motionPreference,
+  normalizeSettings,
+  type AmbientSound,
+  type Settings,
+} from '@/lib/protocol';
 import { adapter, command, chooseFile, normalizeError, windowAction } from '@/lib/bridge';
 import { useWorkspaceState } from '@/lib/use-workspace-state';
 import {
@@ -97,9 +103,11 @@ export function SettingsView({
   );
   const invalidInterval =
     !Number.isInteger(draft.long_interval) || draft.long_interval < 1 || draft.long_interval > 12;
+  const dailyGoal = draft.daily_goal_sessions ?? 4;
+  const invalidGoal = !Number.isInteger(dailyGoal) || dailyGoal < 1 || dailyGoal > 24;
 
   async function save() {
-    if (invalidDurations || invalidInterval) return;
+    if (invalidDurations || invalidInterval || invalidGoal) return;
     const submitted = normalizeSettings(draft);
     try {
       await state.run({ type: 'save_settings', settings: submitted });
@@ -209,6 +217,25 @@ export function SettingsView({
               </p>
             )}
             <SettingRow
+              title="Daily focus goal"
+              description="Target completed focus sessions per day for sidebar progress and streaks."
+            >
+              <input
+                className="small-number"
+                aria-label="Daily focus goal"
+                type="number"
+                min={1}
+                max={24}
+                value={dailyGoal}
+                onChange={e => set('daily_goal_sessions', Number(e.target.value))}
+              />
+            </SettingRow>
+            {invalidGoal && (
+              <p className="field-error" role="alert">
+                Choose 1–24 sessions for your daily goal.
+              </p>
+            )}
+            <SettingRow
               title="Automatically start breaks"
               description="Begin a break immediately when a focus session finishes."
             >
@@ -261,6 +288,45 @@ export function SettingsView({
               <IconSpeaker size={15} />
               Preview saved sound
             </Button>
+            <SettingRow
+              title="Ambient focus soundscape"
+              description="Offline procedural audio that fades in smoothly while focusing."
+            >
+              <select
+                aria-label="Ambient focus soundscape"
+                value={draft.ambient_sound ?? 'off'}
+                onChange={e => set('ambient_sound', e.target.value as AmbientSound)}
+              >
+                {AMBIENT_PRESETS.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </SettingRow>
+            <SettingRow
+              title="Ambient volume"
+              description={`${draft.ambient_volume ?? 35}% soundscape level`}
+            >
+              <input
+                aria-label="Ambient volume"
+                type="range"
+                min={0}
+                max={100}
+                value={draft.ambient_volume ?? 35}
+                onChange={e => set('ambient_volume', Number(e.target.value))}
+              />
+            </SettingRow>
+            <SettingRow
+              title="Play soundscape during breaks"
+              description="Keep ambient audio playing through short and long breaks."
+            >
+              <Toggle
+                label="Play soundscape during breaks"
+                value={draft.ambient_during_breaks ?? false}
+                change={v => set('ambient_during_breaks', v)}
+              />
+            </SettingRow>
             <SettingRow
               title="Windows notifications"
               description="Send a native Windows toast when a session finishes."
@@ -379,6 +445,16 @@ export function SettingsView({
                 label="Windows backdrop"
                 value={draft.mica}
                 change={v => set('mica', v)}
+              />
+            </SettingRow>
+            <SettingRow
+              title="Windows taskbar progress"
+              description="Show live session progress directly on Orbit’s Windows taskbar button."
+            >
+              <Toggle
+                label="Windows taskbar progress"
+                value={draft.taskbar_progress ?? true}
+                change={v => set('taskbar_progress', v)}
               />
             </SettingRow>
             <p className="preview-note">
@@ -665,7 +741,12 @@ export function SettingsView({
             <Button
               primary
               disabled={
-                !dirty || !!state.pending || data.storage_blocked || invalidDurations || invalidInterval
+                !dirty ||
+                !!state.pending ||
+                data.storage_blocked ||
+                invalidDurations ||
+                invalidInterval ||
+                invalidGoal
               }
               onClick={() => void save()}
             >
