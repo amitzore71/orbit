@@ -117,3 +117,78 @@ test('visual states fit the supported window sizes and themes', async ({browser}
     await context.close();
   }
 });
+test('titlebar maximize/restore button and double-click toggle window state', async ({page}) => {
+  await mockDesktop(page); await page.goto('/');
+  const app = page.locator('.orbit-app');
+  await expect(app).toHaveAttribute('data-maximized', 'false');
+  await page.getByRole('button', {name: 'Maximize Orbit', exact: true}).click();
+  await expect(app).toHaveAttribute('data-maximized', 'true');
+  await expect(page.getByRole('button', {name: 'Restore Orbit window', exact: true})).toBeVisible();
+  await page.locator('header.titlebar').dblclick({position: {x: 160, y: 24}});
+  await expect(app).toHaveAttribute('data-maximized', 'false');
+  await expect(page.getByRole('button', {name: 'Maximize Orbit', exact: true})).toBeVisible();
+});
+test('focus presets and live +5m extension update timer flow', async ({page}) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', {name: 'Choose focus preset'}).click();
+  await page.getByRole('dialog', {name: 'Focus presets'}).getByRole('button', {name: /Deep Work/}).click();
+  await expect(page.locator('.time-display')).toHaveText('50:00');
+  await page.getByRole('button', {name: /Start focusing/}).click();
+  await page.getByRole('button', {name: 'Add 5 minutes'}).click();
+  await expect(page.locator('.time-display')).toHaveText('55:00');
+});
+test('daily goal, streaks, heatmap, Zen mode, and Ctrl+K command palette work together', async ({page}) => {
+  await mockDesktop(page); await page.goto('/');
+  await expect(page.locator('.sidebar-pulse')).toContainText('3 / 4 daily goal');
+  await page.getByRole('button', {name: 'Insights', exact: true}).click();
+  await expect(page.getByRole('group', {name: '12-week focus activity heatmap'})).toBeVisible();
+  await expect(page.locator('.consistency-card')).toContainText('6 days');
+  // Open Command Palette with Ctrl+K and enter Zen Focus Mode
+  await page.keyboard.press('Control+k');
+  await expect(page.getByRole('dialog', {name: 'Command palette'})).toBeVisible();
+  await page.getByLabel('Type a command or task').fill('Zen');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.orbit-app')).toHaveAttribute('data-zen', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.orbit-app')).toHaveAttribute('data-zen', 'false');
+});
+test('ambient soundscape selector, Ctrl+K soundscape, and taskbar progress setting work', async ({page}) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', {name: 'Ambient focus soundscape'}).click();
+  await page.getByRole('dialog', {name: 'Ambient soundscape'}).getByRole('button', {name: /Brown noise/}).click();
+  await expect(page.getByRole('button', {name: 'Ambient focus soundscape'})).toContainText('Brown noise');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', {name: /Start focusing/}).click();
+  await expect(page.locator('.ambient-trigger.is-playing')).toBeVisible();
+  // Switch soundscape from Ctrl+K
+  await page.keyboard.press('Control+k');
+  await page.getByLabel('Type a command or task').fill('Soft rain');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', {name: 'Ambient focus soundscape'})).toContainText('Soft rain');
+  // Toggle Windows taskbar progress in Settings -> Appearance
+  await page.getByRole('button', {name: 'Settings', exact: true}).click();
+  await page.getByRole('button', {name: 'Appearance', exact: true}).click();
+  const tb = page.getByRole('switch', {name: 'Windows taskbar progress'});
+  await expect(tb).toHaveAttribute('aria-checked', 'true');
+  await tb.click();
+  await expect(tb).toHaveAttribute('aria-checked', 'false');
+});
+test('task tags filter the queue and Insights shows peak focus hours and tag breakdown', async ({page}) => {
+  await mockDesktop(page); await page.goto('/');
+  await page.getByRole('button', {name: 'Tasks 3', exact: true}).click();
+  await expect(page.getByRole('group', {name: 'Filter by tag'})).toBeVisible();
+  await page.getByRole('group', {name: 'Filter by tag'}).getByRole('button', {name: 'Study', exact: true}).click();
+  await expect(page.getByText('Read a few pages, take a few notes')).toBeVisible();
+  await expect(page.getByText('Shape the next chapter of Orbit')).toHaveCount(0);
+  await page.getByRole('group', {name: 'Filter by tag'}).getByRole('button', {name: 'All tags', exact: true}).click();
+  // Create a tagged task
+  await page.getByLabel('Task title').fill('Client architecture review');
+  await page.getByLabel('Task tag').fill('Client');
+  await page.getByRole('button', {name: 'Add task'}).click();
+  await expect(page.getByRole('group', {name: 'Filter by tag'}).getByRole('button', {name: 'Client', exact: true})).toBeVisible();
+  // Check Insights peak focus hours and Focus by tag
+  await page.getByRole('button', {name: 'Insights', exact: true}).click();
+  await expect(page.locator('.peak-hours-card')).toContainText('Peak: 8a–12p');
+  await expect(page.locator('.tag-breakdown-card')).toContainText('Deep Work');
+  await expect(page.locator('.tag-breakdown-card')).toContainText('71%');
+});

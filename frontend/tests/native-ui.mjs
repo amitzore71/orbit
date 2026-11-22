@@ -130,6 +130,17 @@ try {
   if (!denied) throw new Error('Generic IPC exposed file operations.');
   await invoke(page, 'orbit_command', {command: {type: 'timer', action: 'start'}});
   await page.getByRole('button', {name: 'Pause session', exact: true}).waitFor();
+  // Verify native window maximize and restore cycle
+  const initialWindowState = await invoke(page, 'get_window_state');
+  if (initialWindowState.maximized) throw new Error('Expected main window to start unmaximized.');
+  await invoke(page, 'window_command', {action: 'toggle_maximize'});
+  await delay(200);
+  const maximizedState = await invoke(page, 'get_window_state');
+  if (!maximizedState.maximized) throw new Error('Main window did not maximize.');
+  await invoke(page, 'window_command', {action: 'toggle_maximize'});
+  await delay(200);
+  const restoredState = await invoke(page, 'get_window_state');
+  if (restoredState.maximized) throw new Error('Main window did not restore.');
   await invoke(page, 'window_command', {action: 'hide'});
   await delay(200);
   const hiddenCountdown = await page.locator('.time-display').innerText();
