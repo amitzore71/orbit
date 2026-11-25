@@ -52,10 +52,6 @@ try {
     New-Item -ItemType Directory -Path $stagingDocs -Force | Out-Null
     Copy-Item -LiteralPath 'docs\build-info.json','docs\RELEASE-NOTES.md','docs\PERFORMANCE.md','docs\RELEASE-VALIDATION.md' -Destination $stagingDocs
     if (-not $SkipMeasurements) { Copy-Item -LiteralPath 'docs\release-footprint.json','docs\release-window-startup.json' -Destination $stagingDocs }
-    foreach ($report in @('EXPERIENCE-UPGRADE.md','RELEASE-0.3.1.md')) {
-        $reportPath = Join-Path 'docs' $report
-        if (Test-Path -LiteralPath $reportPath) { Copy-Item -LiteralPath $reportPath -Destination $stagingDocs }
-    }
     # Include optional extended audits only when they identify this exact executable.
     $stagedHash = (Get-FileHash -LiteralPath $stagedExecutable -Algorithm SHA256).Hash
     foreach ($auditName in @('release-steady-footprint.json','release-hidden-soak.json','release-native-performance.json','release-ui-validation.json')) {

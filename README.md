@@ -83,8 +83,8 @@ Build the static frontend and release host before native checks. The native UI d
 
 Requires Python 3.11+ with `psutil` and Inno Setup 6.7.3+. Use `-InnoCompiler` for a custom compiler or `-SkipInstaller` for the portable ZIP. The script builds the frontend and Rust host, checks persistence/legacy data, assembles dependency/font notices, measures the full process tree and interactive startup, verifies the archive, and writes SHA-256 sums to `dist`.
 
-See the [experience upgrade report](docs/EXPERIENCE-UPGRADE.md) for this workspace build. The earlier packaged release's [validation](docs/RELEASE-VALIDATION.md) and [performance measurements](docs/PERFORMANCE.md) remain available with their executable identities. Historical source and release records remain available through the Git tags and GitHub releases.
+See the [release notes](docs/RELEASE-NOTES.md), [validation](docs/RELEASE-VALIDATION.md), and [performance measurements](docs/PERFORMANCE.md). Historical source and release records remain available through the Git tags and GitHub releases.
 
 ## License
 
-Orbit is [MIT licensed](LICENSE). Tauri, Next.js, React, Motion, Phosphor icons, Geist fonts, and transitive dependencies retain their own licenses in the packaged `THIRD-PARTY-NOTICES.txt`. WebView2 is a separately installed Microsoft runtime.
+Orbit is [MIT licensed](LICENSE). Tauri, Next.js, React, Geist fonts, and transitive dependencies retain their own licenses in the packaged `THIRD-PARTY-NOTICES.txt`. WebView2 is a separately installed Microsoft runtime.
